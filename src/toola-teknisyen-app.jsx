@@ -422,10 +422,71 @@ function draftClosure(job, note) {
   };
 }
 
-// Knowledge Gap Detector — only flags a high-value technical decision gap
-// (initial hypothesis vs actual root cause, rejected memory suggestion,
-// suggested check vs performed intervention). Returns null on routine or
-// well-explained closures so the existing flow stays untouched.
+// Values that draftClosure/routineClosure emit when the note wasn't specific
+// enough to infer a real root cause or intervention. Treat these as "no data",
+// never as a real technical decision — otherwise the gap detector fires on
+// noise ("intervention differs from initial check" when the intervention is
+// literally the string "Saha müdahalesi yapıldı").
+const DECISION_PLACEHOLDERS = [
+  "belirtiye özel — teknisyen notundan çıkarıldı",
+  "belirtiye ozel — teknisyen notundan cikarildi",
+  "saha müdahalesi yapıldı",
+  "saha müdahalesi yapıldı.",
+  "saha mudahalesi yapildi",
+  "müdahale tamamlandı",
+  "mudahale tamamlandi",
+  "belirlenemedi",
+  "diğer",
+  "diger",
+  "rutin",
+  "planlı bakım",
+  "planli bakim",
+  "periyodik güvenlik testi",
+  "periyodik guvenlik testi",
+];
+function isPlaceholderValue(v) {
+  if (!v) return true;
+  const s = v.trim().toLowerCase();
+  if (s.length < 4) return true;
+  return DECISION_PLACEHOLDERS.some((p) => s === p || s.startsWith(p));
+}
+
+// Very light equipment classification — used only to pick a realistic
+// placeholder example inside the decision-gap textarea. Never affects logic.
+function equipmentKind(job) {
+  const t = `${job?.equipment || ""} ${job?.title || ""}`.toLowerCase();
+  if (/(klima|split|vrf|çiller|chiller|soğutma|sogutma|fan coil)/.test(t)) return "klima";
+  if (/(kompresör|kompresor)/.test(t)) return "kompresor";
+  if (/(pompa|pump)/.test(t)) return "pompa";
+  if (/(motor|rulman|kaplin|titreşim|titresim)/.test(t)) return "motor";
+  if (/(pano|kart|sensör|sensor|plc|invertör|invertor)/.test(t)) return "elektrik";
+  return "genel";
+}
+function decisionPlaceholderFor(job) {
+  switch (equipmentKind(job)) {
+    case "klima":
+      return "Örn: Gaz basıncı normaldi ancak filtre tamamen tıkalıydı; bu yüzden gaz kaçağı yerine hava akışı problemine yöneldim.";
+    case "kompresor":
+      return "Örn: Hat basıncı sınırdaydı ama çek valfte kaçak sesi vardı; bu yüzden regülatör ayarı yerine valfi söktüm.";
+    case "pompa":
+      return "Örn: Debi düşüktü ama emiş hattında hava vardı; bu yüzden salmastra yerine emiş körlemesini kontrol ettim.";
+    case "motor":
+      return "Örn: Yatak sıcaklığı normaldi ama titreşim Zone C'deydi; bu yüzden rulman yerine kaplin hizasına yöneldim.";
+    case "elektrik":
+      return "Örn: Sigorta sağlamdı ama kontaktör bobininde gerilim düşüktü; bu yüzden yükü değil kumanda devresini kontrol ettim.";
+    default:
+      return "Ölçümler ve gözlemler bu karara nasıl yönlendirdi, kısaca anlat.";
+  }
+}
+
+// Knowledge Gap Detector — only fires on a real, high-value technical decision:
+//   • initial diagnosis and final root cause are different AND both are real
+//     (not placeholder strings),
+//   • suggested check and performed intervention are different AND intervention
+//     is real,
+//   • kurumsal hafıza önerisi reddedildi ve elimizde gerçek bir kök neden var.
+// Returns null on routine work, placeholder-only closures, or otherwise
+// well-explained closures — those go straight to the existing review screen.
 function detectDecisionGap(job, aiMessages, fields) {
   if (!job || !fields) return null;
   const norm = (s) => (s || "").toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ");
@@ -435,34 +496,61 @@ function detectDecisionGap(job, aiMessages, fields) {
     return A.some((w) => B.includes(w));
   };
   const aiWithCauses = (aiMessages || []).filter((m) => m.role === "ai" && m.causes && m.causes.length);
-  const initialCause = aiWithCauses.length ? aiWithCauses[0].causes[0].title : null;
+  const initialDiagnosis = aiWithCauses.length ? aiWithCauses[0].causes[0].title : null;
   const initialChecks = aiWithCauses.length ? (aiWithCauses[0].checks || []).map((c) => c.label) : [];
 
-  const rootCause = fields.rootCause || "";
+  const finalRootCause = fields.rootCause || "";
   const intervention = fields.intervention || "";
+  const outcome = fields.outcome || "";
 
-  const causeDiffers = initialCause && rootCause && !overlap(initialCause, rootCause) && !overlap(rootCause, initialCause);
-  const checkDiffers = initialChecks.length && intervention && !initialChecks.some((c) => overlap(c, intervention));
-  const memRejected = job.memoryFeedback && (job.memoryFeedback.verdict === "notthis" || job.memoryFeedback.verdict === "didnt-work" || job.memoryFeedback.verdict === "rejected");
+  const rootIsReal = !isPlaceholderValue(finalRootCause);
+  const interventionIsReal = !isPlaceholderValue(intervention);
+  const initialIsReal = initialDiagnosis && !isPlaceholderValue(initialDiagnosis);
+
+  const causeDiffers =
+    initialIsReal && rootIsReal &&
+    !overlap(initialDiagnosis, finalRootCause) && !overlap(finalRootCause, initialDiagnosis);
+
+  const checkDiffers =
+    initialChecks.length && interventionIsReal &&
+    !initialChecks.some((c) => overlap(c, intervention));
+
+  const memRejected =
+    job.memoryFeedback &&
+    (job.memoryFeedback.verdict === "notthis" ||
+     job.memoryFeedback.verdict === "didnt-work" ||
+     job.memoryFeedback.verdict === "rejected") &&
+    rootIsReal;
 
   if (!causeDiffers && !checkDiffers && !memRejected) return null;
 
   let question;
   if (causeDiffers) {
-    question = `“${initialCause}” yerine “${rootCause}” yönüne geçmene hangi ölçüm veya gözlem neden oldu?`;
+    question = `İlk olası neden "${initialDiagnosis}" idi. Ancak gerçek kök neden "${finalRootCause}" olarak belirlendi. "${initialDiagnosis}" ihtimalini elemenize hangi ölçüm veya gözlem neden oldu?`;
   } else if (memRejected) {
-    question = `Kurumsal hafıza önerisi bu işte yaramadı. Kararını değiştiren gözlem veya ölçüm neydi?`;
+    question = `Kurumsal hafıza önerisi bu işte yaramadı. "${finalRootCause}" kararını almanızı sağlayan gözlem veya ölçüm neydi?`;
   } else {
-    question = `Önerilen kontrol yerine “${intervention.slice(0, 60)}${intervention.length > 60 ? "…" : ""}” yapmana ne yönlendirdi?`;
+    question = `Önerilen kontroller "${initialChecks.slice(0, 2).join(", ")}" iken siz "${intervention.slice(0, 80)}${intervention.length > 80 ? "…" : ""}" yaptınız. Bu yöne sizi ne yönlendirdi?`;
   }
 
-  const contextText = initialCause && rootCause
-    ? `İlk olası neden ${initialCause.toLowerCase()}. İş, ${rootCause.toLowerCase()} yönünde çözüldü.`
+  const contextText = causeDiffers
+    ? `İlk teşhis "${initialDiagnosis}" idi; iş "${finalRootCause}" olarak çözüldü.`
     : memRejected
-      ? `Kurumsal hafıza önerisi reddedildi. Karar başka bir yönde alındı.`
+      ? `Kurumsal hafıza önerisi reddedildi; kök neden "${finalRootCause}" olarak belirlendi.`
       : `Önerilen kontrol ile yapılan müdahale farklı.`;
 
-  return { initialCause, rootCause, intervention, outcome: fields.outcome, question, contextText };
+  return {
+    initialDiagnosis: initialIsReal ? initialDiagnosis : null,
+    finalRootCause: rootIsReal ? finalRootCause : null,
+    intervention: interventionIsReal ? intervention : null,
+    outcome: isPlaceholderValue(outcome) ? null : outcome,
+    question,
+    contextText,
+    reason: causeDiffers ? "cause_differs" : memRejected ? "memory_rejected" : "intervention_differs",
+    // legacy alias so any older reader keeps working
+    initialCause: initialIsReal ? initialDiagnosis : null,
+    rootCause: rootIsReal ? finalRootCause : null,
+  };
 }
 
 // Turns an AI-diagnosis conversation into a starter note for Close, so confirming
@@ -718,7 +806,7 @@ function DockIconBtn({ icon: Icon, onClick, dark }) {
 //   mic pill  → push-to-talk: HOLD to speak, RELEASE to send — the reply follows immediately
 //   +         → context quick actions (menu supplied by the screen; hidden if none)
 // On screens without their own chat (onAsk only), mic/keyboard route to the assistant.
-function Dock({ placeholder = "ToolA'ya sor…", onSend, onAsk, primaryAction, plusItems }) {
+function Dock({ placeholder = "ToolA'ya sor…", onSend, onAsk, primaryAction, plusItems, hideMic }) {
   const [mode, setMode] = useState(null); // null | "text" | "voice" | "plus"
   const [value, setValue] = useState("");
   const [attachments, setAttachments] = useState([]);
@@ -955,7 +1043,7 @@ function Dock({ placeholder = "ToolA'ya sor…", onSend, onAsk, primaryAction, p
         ) : null}
         {primaryAction ? (
           <>
-            <DockIconBtn icon={Mic} onClick={() => { if (onAsk) onAsk(); }} dark />
+            {hideMic ? null : <DockIconBtn icon={Mic} onClick={() => { if (onAsk) onAsk(); }} dark />}
             <button type="button" onClick={primaryAction.onClick} disabled={primaryAction.disabled}
               className="flex-1 rounded-full py-3.5 text-sm font-semibold flex items-center justify-center gap-1"
               style={{
@@ -1916,10 +2004,10 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
     const technicalDecision = decisionReason.trim()
       ? {
           decisionReason: decisionReason.trim(),
-          initialDiagnosis: gapInfo?.initialCause || null,
-          rootCause: fields.rootCause,
-          intervention: fields.intervention,
-          outcome: fields.outcome,
+          initialDiagnosis: gapInfo?.initialDiagnosis || null,
+          finalRootCause: gapInfo?.finalRootCause || fields.rootCause || null,
+          intervention: gapInfo?.intervention || fields.intervention || null,
+          outcome: gapInfo?.outcome || fields.outcome || null,
           evidenceIds: job.evidence.map((e) => e.id),
           recordedAt: new Date().toISOString(),
         }
@@ -2012,12 +2100,25 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
   }
 
   if (step === "decision-gap") {
+    // Only real evidence — never fabricate measurements. If the technician
+    // hasn't attached any, we show none rather than sample chips.
     const measurements = job.evidence.filter((e) => e.type === "olcum");
-    const chips = [
-      ...measurements.map((m) => ({ key: m.id, text: m.value || `${m.measureType}: ${m.measureValue} ${m.measureUnit || ""}` })),
-      gapInfo?.initialCause ? { key: "init", text: `İlk teşhis: ${gapInfo.initialCause}` } : null,
-      fields?.intervention ? { key: "int", text: `Müdahale: ${fields.intervention.slice(0, 60)}${fields.intervention.length > 60 ? "…" : ""}` } : null,
-      fields?.outcome ? { key: "out", text: `Sonuç: ${fields.outcome}` } : null,
+    const photos = job.evidence.filter((e) => e.type === "foto" || e.type === "parca_foto");
+    const audios = job.evidence.filter((e) => e.type === "ses");
+    const tests = job.evidence.filter((e) => e.type === "hata_kodu");
+    const contextChips = [
+      job?.code ? { key: "code", text: job.code } : null,
+      job?.equipment ? { key: "equip", text: job.equipment } : null,
+      gapInfo?.initialDiagnosis ? { key: "init", text: `İlk teşhis: ${gapInfo.initialDiagnosis}` } : null,
+      gapInfo?.finalRootCause ? { key: "root", text: `Gerçek kök neden: ${gapInfo.finalRootCause}` } : null,
+      gapInfo?.intervention ? { key: "int", text: `Müdahale: ${gapInfo.intervention.slice(0, 60)}${gapInfo.intervention.length > 60 ? "…" : ""}` } : null,
+      gapInfo?.outcome ? { key: "out", text: `Sonuç: ${gapInfo.outcome}` } : null,
+    ].filter(Boolean);
+    const evidenceChips = [
+      ...measurements.map((m) => ({ key: m.id, text: m.value || `${m.measureType || "Ölçüm"}: ${m.measureValue || ""} ${m.measureUnit || ""}`.trim() })),
+      photos.length ? { key: "ph", text: `${photos.length} fotoğraf` } : null,
+      audios.length ? { key: "au", text: `${audios.length} ses kaydı` } : null,
+      tests.length ? { key: "tt", text: `${tests.length} test/hata kodu` } : null,
     ].filter(Boolean);
     return (
       <>
@@ -2033,10 +2134,19 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
         <div className="mt-4 rounded-3xl p-4" style={{ background: CARD_BG, boxShadow: CARD_SHADOW }}>
           <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: MUTED }}>Soru</div>
           <p className="mt-1.5 text-base font-semibold" style={{ color: INK }}>{gapInfo?.question}</p>
-          {chips.length ? (
+          {contextChips.length ? (
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {chips.map((c) => (
+              {contextChips.map((c) => (
                 <span key={c.key} className="rounded-full px-2.5 py-1 text-xs font-medium" style={{ background: "#F1EFE9", color: INK }}>
+                  {c.text}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {evidenceChips.length ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {evidenceChips.map((c) => (
+                <span key={c.key} className="rounded-full px-2.5 py-1 text-xs font-medium" style={{ background: "#E7F1FC", color: "#2563A6" }}>
                   {c.text}
                 </span>
               ))}
@@ -2050,7 +2160,7 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
         <div className="mt-3">
           <SectionLabel>Karar gerekçen</SectionLabel>
           <textarea rows={4} value={decisionReason} onChange={(e) => { setDecisionSkip(null); setDecisionReason(e.target.value); }}
-            placeholder="Örn: Yatak sıcaklığı 52°C ile normaldi ama titreşim 6.8 mm/s Zone C'deydi — bu yüzden kaplin hizasına yöneldim."
+            placeholder={decisionPlaceholderFor(job)}
             className="mt-2 w-full rounded-3xl p-4 text-sm outline-none" style={{ background: CARD_BG, boxShadow: CARD_SHADOW, color: INK }} />
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -2063,9 +2173,9 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
             Bu karar önemli değildi
           </button>
         </div>
-        <div style={{ height: 100 }} />
+        <div style={{ height: 160 }} />
         <BottomDock>
-          <Dock primaryAction={{ label: "Cevabı kaydet ve özeti gör", onClick: () => setStep("review"), disabled: decisionReason.trim().length < 3 }} onAsk={() => goto("ai", job.id)} />
+          <Dock hideMic primaryAction={{ label: "Cevabı kaydet ve özeti gör", onClick: () => setStep("review"), disabled: decisionReason.trim().length < 3 }} />
         </BottomDock>
       </>
     );
