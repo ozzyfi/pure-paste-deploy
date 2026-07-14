@@ -2107,6 +2107,27 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
       })()}
       <EvidenceStrip job={job} goto={goto} onPreview={setPreviewEv} label={`Bu kapanışa eklenecek kanıtlar (${job.evidence.length})`} />
 
+      {gapInfo && decisionReason.trim() ? (
+      <div className="mt-4 rounded-3xl p-4" style={{ background: CARD_BG, boxShadow: CARD_SHADOW }}>
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "#9C6B0A" }}>Teknik karar gerekçesi</div>
+          <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: "#FDF3E4", color: "#9C6B0A" }}>decisionReason</span>
+        </div>
+        <textarea rows={3} value={decisionReason} onChange={(e) => setDecisionReason(e.target.value)}
+          className="mt-2 w-full rounded-2xl p-3 text-sm outline-none" style={{ background: "#F1EFE9", color: INK, border: "none" }} />
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {gapInfo.initialCause ? (
+            <span className="rounded-full px-2.5 py-1 text-xs font-medium" style={{ background: "#F1EFE9", color: INK }}>İlk teşhis: {gapInfo.initialCause}</span>
+          ) : null}
+          {job.evidence.filter((e) => e.type === "olcum").map((m) => (
+            <span key={m.id} className="rounded-full px-2.5 py-1 text-xs font-medium" style={{ background: "#F1EFE9", color: INK }}>{m.value}</span>
+          ))}
+          <span className="rounded-full px-2.5 py-1 text-xs font-medium" style={{ background: "#F1EFE9", color: INK }}>Kanıt: {job.evidence.length}</span>
+        </div>
+      </div>
+      ) : null}
+
+
       {fields.memoryCandidate ? (
       <div className="mt-4 rounded-3xl p-4" style={{ background: "#E7F1FC" }}>
         <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "#2563A6" }}>Hafızaya aday not</div>
