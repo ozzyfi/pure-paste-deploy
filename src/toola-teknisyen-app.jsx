@@ -2100,12 +2100,25 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
   }
 
   if (step === "decision-gap") {
+    // Only real evidence — never fabricate measurements. If the technician
+    // hasn't attached any, we show none rather than sample chips.
     const measurements = job.evidence.filter((e) => e.type === "olcum");
-    const chips = [
-      ...measurements.map((m) => ({ key: m.id, text: m.value || `${m.measureType}: ${m.measureValue} ${m.measureUnit || ""}` })),
-      gapInfo?.initialCause ? { key: "init", text: `İlk teşhis: ${gapInfo.initialCause}` } : null,
-      fields?.intervention ? { key: "int", text: `Müdahale: ${fields.intervention.slice(0, 60)}${fields.intervention.length > 60 ? "…" : ""}` } : null,
-      fields?.outcome ? { key: "out", text: `Sonuç: ${fields.outcome}` } : null,
+    const photos = job.evidence.filter((e) => e.type === "foto" || e.type === "parca_foto");
+    const audios = job.evidence.filter((e) => e.type === "ses");
+    const tests = job.evidence.filter((e) => e.type === "hata_kodu");
+    const contextChips = [
+      job?.code ? { key: "code", text: job.code } : null,
+      job?.equipment ? { key: "equip", text: job.equipment } : null,
+      gapInfo?.initialDiagnosis ? { key: "init", text: `İlk teşhis: ${gapInfo.initialDiagnosis}` } : null,
+      gapInfo?.finalRootCause ? { key: "root", text: `Gerçek kök neden: ${gapInfo.finalRootCause}` } : null,
+      gapInfo?.intervention ? { key: "int", text: `Müdahale: ${gapInfo.intervention.slice(0, 60)}${gapInfo.intervention.length > 60 ? "…" : ""}` } : null,
+      gapInfo?.outcome ? { key: "out", text: `Sonuç: ${gapInfo.outcome}` } : null,
+    ].filter(Boolean);
+    const evidenceChips = [
+      ...measurements.map((m) => ({ key: m.id, text: m.value || `${m.measureType || "Ölçüm"}: ${m.measureValue || ""} ${m.measureUnit || ""}`.trim() })),
+      photos.length ? { key: "ph", text: `${photos.length} fotoğraf` } : null,
+      audios.length ? { key: "au", text: `${audios.length} ses kaydı` } : null,
+      tests.length ? { key: "tt", text: `${tests.length} test/hata kodu` } : null,
     ].filter(Boolean);
     return (
       <>
@@ -2121,10 +2134,19 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
         <div className="mt-4 rounded-3xl p-4" style={{ background: CARD_BG, boxShadow: CARD_SHADOW }}>
           <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: MUTED }}>Soru</div>
           <p className="mt-1.5 text-base font-semibold" style={{ color: INK }}>{gapInfo?.question}</p>
-          {chips.length ? (
+          {contextChips.length ? (
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {chips.map((c) => (
+              {contextChips.map((c) => (
                 <span key={c.key} className="rounded-full px-2.5 py-1 text-xs font-medium" style={{ background: "#F1EFE9", color: INK }}>
+                  {c.text}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {evidenceChips.length ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {evidenceChips.map((c) => (
+                <span key={c.key} className="rounded-full px-2.5 py-1 text-xs font-medium" style={{ background: "#E7F1FC", color: "#2563A6" }}>
                   {c.text}
                 </span>
               ))}
@@ -2138,7 +2160,7 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
         <div className="mt-3">
           <SectionLabel>Karar gerekçen</SectionLabel>
           <textarea rows={4} value={decisionReason} onChange={(e) => { setDecisionSkip(null); setDecisionReason(e.target.value); }}
-            placeholder="Örn: Yatak sıcaklığı 52°C ile normaldi ama titreşim 6.8 mm/s Zone C'deydi — bu yüzden kaplin hizasına yöneldim."
+            placeholder={decisionPlaceholderFor(job)}
             className="mt-2 w-full rounded-3xl p-4 text-sm outline-none" style={{ background: CARD_BG, boxShadow: CARD_SHADOW, color: INK }} />
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -2151,9 +2173,9 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
             Bu karar önemli değildi
           </button>
         </div>
-        <div style={{ height: 100 }} />
+        <div style={{ height: 160 }} />
         <BottomDock>
-          <Dock primaryAction={{ label: "Cevabı kaydet ve özeti gör", onClick: () => setStep("review"), disabled: decisionReason.trim().length < 3 }} onAsk={() => goto("ai", job.id)} />
+          <Dock hideMic primaryAction={{ label: "Cevabı kaydet ve özeti gör", onClick: () => setStep("review"), disabled: decisionReason.trim().length < 3 }} />
         </BottomDock>
       </>
     );
