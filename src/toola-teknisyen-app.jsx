@@ -806,7 +806,7 @@ function DockIconBtn({ icon: Icon, onClick, dark }) {
 //   mic pill  → push-to-talk: HOLD to speak, RELEASE to send — the reply follows immediately
 //   +         → context quick actions (menu supplied by the screen; hidden if none)
 // On screens without their own chat (onAsk only), mic/keyboard route to the assistant.
-function Dock({ placeholder = "ToolA'ya sor…", onSend, onAsk, primaryAction, plusItems }) {
+function Dock({ placeholder = "ToolA'ya sor…", onSend, onAsk, primaryAction, plusItems, hideMic }) {
   const [mode, setMode] = useState(null); // null | "text" | "voice" | "plus"
   const [value, setValue] = useState("");
   const [attachments, setAttachments] = useState([]);
