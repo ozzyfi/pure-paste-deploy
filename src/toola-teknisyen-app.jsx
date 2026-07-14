@@ -2004,10 +2004,10 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
     const technicalDecision = decisionReason.trim()
       ? {
           decisionReason: decisionReason.trim(),
-          initialDiagnosis: gapInfo?.initialCause || null,
-          rootCause: fields.rootCause,
-          intervention: fields.intervention,
-          outcome: fields.outcome,
+          initialDiagnosis: gapInfo?.initialDiagnosis || null,
+          finalRootCause: gapInfo?.finalRootCause || fields.rootCause || null,
+          intervention: gapInfo?.intervention || fields.intervention || null,
+          outcome: gapInfo?.outcome || fields.outcome || null,
           evidenceIds: job.evidence.map((e) => e.id),
           recordedAt: new Date().toISOString(),
         }
