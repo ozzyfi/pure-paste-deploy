@@ -2011,6 +2011,68 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
     );
   }
 
+  if (step === "decision-gap") {
+    const measurements = job.evidence.filter((e) => e.type === "olcum");
+    const chips = [
+      ...measurements.map((m) => ({ key: m.id, text: m.value || `${m.measureType}: ${m.measureValue} ${m.measureUnit || ""}` })),
+      gapInfo?.initialCause ? { key: "init", text: `İlk teşhis: ${gapInfo.initialCause}` } : null,
+      fields?.intervention ? { key: "int", text: `Müdahale: ${fields.intervention.slice(0, 60)}${fields.intervention.length > 60 ? "…" : ""}` } : null,
+      fields?.outcome ? { key: "out", text: `Sonuç: ${fields.outcome}` } : null,
+    ].filter(Boolean);
+    return (
+      <>
+        <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold" style={{ color: "#9C6B0A" }}>
+          <Sparkles size={12} /> KARAR NOKTASI
+        </div>
+        <h1 className="mt-1 text-2xl font-bold leading-snug" style={{ color: INK }}>
+          ToolA bir teknik karar noktası buldu
+        </h1>
+        <div className="mt-3 rounded-3xl p-4" style={{ background: "#FDF3E4" }}>
+          <p className="text-sm" style={{ color: INK }}>{gapInfo?.contextText}</p>
+        </div>
+        <div className="mt-4 rounded-3xl p-4" style={{ background: CARD_BG, boxShadow: CARD_SHADOW }}>
+          <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: MUTED }}>Soru</div>
+          <p className="mt-1.5 text-base font-semibold" style={{ color: INK }}>{gapInfo?.question}</p>
+          {chips.length ? (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {chips.map((c) => (
+                <span key={c.key} className="rounded-full px-2.5 py-1 text-xs font-medium" style={{ background: "#F1EFE9", color: INK }}>
+                  {c.text}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        <div className="mt-4">
+          <HoldTalkButton label="Basılı tut, kararını anlat"
+            onTranscript={(t) => { setDecisionSkip(null); setDecisionReason((n) => (n.trim() ? n.trim() + " " + t : t)); }} />
+        </div>
+        <div className="mt-3">
+          <SectionLabel>Karar gerekçen</SectionLabel>
+          <textarea rows={4} value={decisionReason} onChange={(e) => { setDecisionSkip(null); setDecisionReason(e.target.value); }}
+            placeholder="Örn: Yatak sıcaklığı 52°C ile normaldi ama titreşim 6.8 mm/s Zone C'deydi — bu yüzden kaplin hizasına yöneldim."
+            className="mt-2 w-full rounded-3xl p-4 text-sm outline-none" style={{ background: CARD_BG, boxShadow: CARD_SHADOW, color: INK }} />
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" onClick={() => { setDecisionSkip("unknown"); setDecisionReason(""); setStep("review"); }}
+            className="rounded-full px-3.5 py-2 text-xs font-semibold" style={{ background: "#F1EFE9", color: MUTED, border: "none" }}>
+            Bu bilgi bende yok
+          </button>
+          <button type="button" onClick={() => { setDecisionSkip("unimportant"); setDecisionReason(""); setStep("review"); }}
+            className="rounded-full px-3.5 py-2 text-xs font-semibold" style={{ background: "#F1EFE9", color: MUTED, border: "none" }}>
+            Bu karar önemli değildi
+          </button>
+        </div>
+        <div style={{ height: 100 }} />
+        <BottomDock>
+          <Dock primaryAction={{ label: "Cevabı kaydet ve özeti gör", onClick: () => setStep("review"), disabled: decisionReason.trim().length < 3 }} onAsk={() => goto("ai", job.id)} />
+        </BottomDock>
+      </>
+    );
+  }
+
+
+
   return (
     <>
       <h1 className="mt-1 text-2xl font-bold leading-snug" style={{ color: INK }}>Kapanış özeti doğru mu?</h1>
