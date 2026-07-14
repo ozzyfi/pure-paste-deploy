@@ -1043,7 +1043,7 @@ function Dock({ placeholder = "ToolA'ya sor…", onSend, onAsk, primaryAction, p
         ) : null}
         {primaryAction ? (
           <>
-            <DockIconBtn icon={Mic} onClick={() => { if (onAsk) onAsk(); }} dark />
+            {hideMic ? null : <DockIconBtn icon={Mic} onClick={() => { if (onAsk) onAsk(); }} dark />}
             <button type="button" onClick={primaryAction.onClick} disabled={primaryAction.disabled}
               className="flex-1 rounded-full py-3.5 text-sm font-semibold flex items-center justify-center gap-1"
               style={{
