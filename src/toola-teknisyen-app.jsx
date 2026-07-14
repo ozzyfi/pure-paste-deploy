@@ -422,6 +422,49 @@ function draftClosure(job, note) {
   };
 }
 
+// Knowledge Gap Detector — only flags a high-value technical decision gap
+// (initial hypothesis vs actual root cause, rejected memory suggestion,
+// suggested check vs performed intervention). Returns null on routine or
+// well-explained closures so the existing flow stays untouched.
+function detectDecisionGap(job, aiMessages, fields) {
+  if (!job || !fields) return null;
+  const norm = (s) => (s || "").toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ");
+  const overlap = (a, b) => {
+    const A = norm(a).split(/\s+/).filter((w) => w.length > 3);
+    const B = norm(b);
+    return A.some((w) => B.includes(w));
+  };
+  const aiWithCauses = (aiMessages || []).filter((m) => m.role === "ai" && m.causes && m.causes.length);
+  const initialCause = aiWithCauses.length ? aiWithCauses[0].causes[0].title : null;
+  const initialChecks = aiWithCauses.length ? (aiWithCauses[0].checks || []).map((c) => c.label) : [];
+
+  const rootCause = fields.rootCause || "";
+  const intervention = fields.intervention || "";
+
+  const causeDiffers = initialCause && rootCause && !overlap(initialCause, rootCause) && !overlap(rootCause, initialCause);
+  const checkDiffers = initialChecks.length && intervention && !initialChecks.some((c) => overlap(c, intervention));
+  const memRejected = job.memoryFeedback && (job.memoryFeedback.verdict === "notthis" || job.memoryFeedback.verdict === "didnt-work" || job.memoryFeedback.verdict === "rejected");
+
+  if (!causeDiffers && !checkDiffers && !memRejected) return null;
+
+  let question;
+  if (causeDiffers) {
+    question = `“${initialCause}” yerine “${rootCause}” yönüne geçmene hangi ölçüm veya gözlem neden oldu?`;
+  } else if (memRejected) {
+    question = `Kurumsal hafıza önerisi bu işte yaramadı. Kararını değiştiren gözlem veya ölçüm neydi?`;
+  } else {
+    question = `Önerilen kontrol yerine “${intervention.slice(0, 60)}${intervention.length > 60 ? "…" : ""}” yapmana ne yönlendirdi?`;
+  }
+
+  const contextText = initialCause && rootCause
+    ? `İlk olası neden ${initialCause.toLowerCase()}. İş, ${rootCause.toLowerCase()} yönünde çözüldü.`
+    : memRejected
+      ? `Kurumsal hafıza önerisi reddedildi. Karar başka bir yönde alındı.`
+      : `Önerilen kontrol ile yapılan müdahale farklı.`;
+
+  return { initialCause, rootCause, intervention, outcome: fields.outcome, question, contextText };
+}
+
 // Turns an AI-diagnosis conversation into a starter note for Close, so confirming
 // "sorun bu çıktı" doesn't throw away what was just figured out together.
 function summarizeDiagnosis(job, messages) {
