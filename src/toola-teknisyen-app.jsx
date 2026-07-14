@@ -422,6 +422,49 @@ function draftClosure(job, note) {
   };
 }
 
+// Knowledge Gap Detector — only flags a high-value technical decision gap
+// (initial hypothesis vs actual root cause, rejected memory suggestion,
+// suggested check vs performed intervention). Returns null on routine or
+// well-explained closures so the existing flow stays untouched.
+function detectDecisionGap(job, aiMessages, fields) {
+  if (!job || !fields) return null;
+  const norm = (s) => (s || "").toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ");
+  const overlap = (a, b) => {
+    const A = norm(a).split(/\s+/).filter((w) => w.length > 3);
+    const B = norm(b);
+    return A.some((w) => B.includes(w));
+  };
+  const aiWithCauses = (aiMessages || []).filter((m) => m.role === "ai" && m.causes && m.causes.length);
+  const initialCause = aiWithCauses.length ? aiWithCauses[0].causes[0].title : null;
+  const initialChecks = aiWithCauses.length ? (aiWithCauses[0].checks || []).map((c) => c.label) : [];
+
+  const rootCause = fields.rootCause || "";
+  const intervention = fields.intervention || "";
+
+  const causeDiffers = initialCause && rootCause && !overlap(initialCause, rootCause) && !overlap(rootCause, initialCause);
+  const checkDiffers = initialChecks.length && intervention && !initialChecks.some((c) => overlap(c, intervention));
+  const memRejected = job.memoryFeedback && (job.memoryFeedback.verdict === "notthis" || job.memoryFeedback.verdict === "didnt-work" || job.memoryFeedback.verdict === "rejected");
+
+  if (!causeDiffers && !checkDiffers && !memRejected) return null;
+
+  let question;
+  if (causeDiffers) {
+    question = `“${initialCause}” yerine “${rootCause}” yönüne geçmene hangi ölçüm veya gözlem neden oldu?`;
+  } else if (memRejected) {
+    question = `Kurumsal hafıza önerisi bu işte yaramadı. Kararını değiştiren gözlem veya ölçüm neydi?`;
+  } else {
+    question = `Önerilen kontrol yerine “${intervention.slice(0, 60)}${intervention.length > 60 ? "…" : ""}” yapmana ne yönlendirdi?`;
+  }
+
+  const contextText = initialCause && rootCause
+    ? `İlk olası neden ${initialCause.toLowerCase()}. İş, ${rootCause.toLowerCase()} yönünde çözüldü.`
+    : memRejected
+      ? `Kurumsal hafıza önerisi reddedildi. Karar başka bir yönde alındı.`
+      : `Önerilen kontrol ile yapılan müdahale farklı.`;
+
+  return { initialCause, rootCause, intervention, outcome: fields.outcome, question, contextText };
+}
+
 // Turns an AI-diagnosis conversation into a starter note for Close, so confirming
 // "sorun bu çıktı" doesn't throw away what was just figured out together.
 function summarizeDiagnosis(job, messages) {
@@ -1843,6 +1886,9 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
   const [fields, setFields] = useState(null);
   const [followUp, setFollowUp] = useState(null); // {id, code} of the created follow-up job
   const [previewEv, setPreviewEv] = useState(null); // evidence tapped for full-size preview
+  const [gapInfo, setGapInfo] = useState(null);
+  const [decisionReason, setDecisionReason] = useState("");
+  const [decisionSkip, setDecisionSkip] = useState(null); // "unknown" | "unimportant" | null
   const isRoutine = job ? job.taskType === "bakim" || job.taskType === "test" : false;
   const [checks, setChecks] = useState(() =>
     job ? (CHECKLIST_BY_KIND[jobKind(job)] || CHECKLIST_BY_KIND.genel).map((label) => ({ label, state: null })) : []
@@ -1857,12 +1903,30 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
   }
 
   function proceed() {
-    setFields(isRoutine ? routineClosure(job, checks, note) : draftClosure(job, note));
+    const f = isRoutine ? routineClosure(job, checks, note) : draftClosure(job, note);
+    setFields(f);
+    if (!isRoutine) {
+      const gap = detectDecisionGap(job, aiMessages, f);
+      if (gap) { setGapInfo(gap); setStep("decision-gap"); return; }
+    }
     setStep("review");
   }
   function confirm() {
     const usedMemoryId = job.memoryFeedback?.verdict === "worked" ? job.memoryFeedback.memId : undefined;
-    closeJob(job.id, { ...fields, usedMemoryId, followUp, testDone: true, closedAt: new Date().toISOString() });
+    const technicalDecision = decisionReason.trim()
+      ? {
+          decisionReason: decisionReason.trim(),
+          initialDiagnosis: gapInfo?.initialCause || null,
+          rootCause: fields.rootCause,
+          intervention: fields.intervention,
+          outcome: fields.outcome,
+          evidenceIds: job.evidence.map((e) => e.id),
+          recordedAt: new Date().toISOString(),
+        }
+      : decisionSkip
+        ? { skipped: decisionSkip, recordedAt: new Date().toISOString() }
+        : undefined;
+    closeJob(job.id, { ...fields, usedMemoryId, followUp, testDone: true, technicalDecision, closedAt: new Date().toISOString() });
     goto("summary", job.id);
   }
 
@@ -1947,6 +2011,68 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
     );
   }
 
+  if (step === "decision-gap") {
+    const measurements = job.evidence.filter((e) => e.type === "olcum");
+    const chips = [
+      ...measurements.map((m) => ({ key: m.id, text: m.value || `${m.measureType}: ${m.measureValue} ${m.measureUnit || ""}` })),
+      gapInfo?.initialCause ? { key: "init", text: `İlk teşhis: ${gapInfo.initialCause}` } : null,
+      fields?.intervention ? { key: "int", text: `Müdahale: ${fields.intervention.slice(0, 60)}${fields.intervention.length > 60 ? "…" : ""}` } : null,
+      fields?.outcome ? { key: "out", text: `Sonuç: ${fields.outcome}` } : null,
+    ].filter(Boolean);
+    return (
+      <>
+        <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold" style={{ color: "#9C6B0A" }}>
+          <Sparkles size={12} /> KARAR NOKTASI
+        </div>
+        <h1 className="mt-1 text-2xl font-bold leading-snug" style={{ color: INK }}>
+          ToolA bir teknik karar noktası buldu
+        </h1>
+        <div className="mt-3 rounded-3xl p-4" style={{ background: "#FDF3E4" }}>
+          <p className="text-sm" style={{ color: INK }}>{gapInfo?.contextText}</p>
+        </div>
+        <div className="mt-4 rounded-3xl p-4" style={{ background: CARD_BG, boxShadow: CARD_SHADOW }}>
+          <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: MUTED }}>Soru</div>
+          <p className="mt-1.5 text-base font-semibold" style={{ color: INK }}>{gapInfo?.question}</p>
+          {chips.length ? (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {chips.map((c) => (
+                <span key={c.key} className="rounded-full px-2.5 py-1 text-xs font-medium" style={{ background: "#F1EFE9", color: INK }}>
+                  {c.text}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+        <div className="mt-4">
+          <HoldTalkButton label="Basılı tut, kararını anlat"
+            onTranscript={(t) => { setDecisionSkip(null); setDecisionReason((n) => (n.trim() ? n.trim() + " " + t : t)); }} />
+        </div>
+        <div className="mt-3">
+          <SectionLabel>Karar gerekçen</SectionLabel>
+          <textarea rows={4} value={decisionReason} onChange={(e) => { setDecisionSkip(null); setDecisionReason(e.target.value); }}
+            placeholder="Örn: Yatak sıcaklığı 52°C ile normaldi ama titreşim 6.8 mm/s Zone C'deydi — bu yüzden kaplin hizasına yöneldim."
+            className="mt-2 w-full rounded-3xl p-4 text-sm outline-none" style={{ background: CARD_BG, boxShadow: CARD_SHADOW, color: INK }} />
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" onClick={() => { setDecisionSkip("unknown"); setDecisionReason(""); setStep("review"); }}
+            className="rounded-full px-3.5 py-2 text-xs font-semibold" style={{ background: "#F1EFE9", color: MUTED, border: "none" }}>
+            Bu bilgi bende yok
+          </button>
+          <button type="button" onClick={() => { setDecisionSkip("unimportant"); setDecisionReason(""); setStep("review"); }}
+            className="rounded-full px-3.5 py-2 text-xs font-semibold" style={{ background: "#F1EFE9", color: MUTED, border: "none" }}>
+            Bu karar önemli değildi
+          </button>
+        </div>
+        <div style={{ height: 100 }} />
+        <BottomDock>
+          <Dock primaryAction={{ label: "Cevabı kaydet ve özeti gör", onClick: () => setStep("review"), disabled: decisionReason.trim().length < 3 }} onAsk={() => goto("ai", job.id)} />
+        </BottomDock>
+      </>
+    );
+  }
+
+
+
   return (
     <>
       <h1 className="mt-1 text-2xl font-bold leading-snug" style={{ color: INK }}>Kapanış özeti doğru mu?</h1>
@@ -1980,6 +2106,27 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
         );
       })()}
       <EvidenceStrip job={job} goto={goto} onPreview={setPreviewEv} label={`Bu kapanışa eklenecek kanıtlar (${job.evidence.length})`} />
+
+      {gapInfo && decisionReason.trim() ? (
+      <div className="mt-4 rounded-3xl p-4" style={{ background: CARD_BG, boxShadow: CARD_SHADOW }}>
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: "#9C6B0A" }}>Teknik karar gerekçesi</div>
+          <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: "#FDF3E4", color: "#9C6B0A" }}>decisionReason</span>
+        </div>
+        <textarea rows={3} value={decisionReason} onChange={(e) => setDecisionReason(e.target.value)}
+          className="mt-2 w-full rounded-2xl p-3 text-sm outline-none" style={{ background: "#F1EFE9", color: INK, border: "none" }} />
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {gapInfo.initialCause ? (
+            <span className="rounded-full px-2.5 py-1 text-xs font-medium" style={{ background: "#F1EFE9", color: INK }}>İlk teşhis: {gapInfo.initialCause}</span>
+          ) : null}
+          {job.evidence.filter((e) => e.type === "olcum").map((m) => (
+            <span key={m.id} className="rounded-full px-2.5 py-1 text-xs font-medium" style={{ background: "#F1EFE9", color: INK }}>{m.value}</span>
+          ))}
+          <span className="rounded-full px-2.5 py-1 text-xs font-medium" style={{ background: "#F1EFE9", color: INK }}>Kanıt: {job.evidence.length}</span>
+        </div>
+      </div>
+      ) : null}
+
 
       {fields.memoryCandidate ? (
       <div className="mt-4 rounded-3xl p-4" style={{ background: "#E7F1FC" }}>
