@@ -422,10 +422,71 @@ function draftClosure(job, note) {
   };
 }
 
-// Knowledge Gap Detector — only flags a high-value technical decision gap
-// (initial hypothesis vs actual root cause, rejected memory suggestion,
-// suggested check vs performed intervention). Returns null on routine or
-// well-explained closures so the existing flow stays untouched.
+// Values that draftClosure/routineClosure emit when the note wasn't specific
+// enough to infer a real root cause or intervention. Treat these as "no data",
+// never as a real technical decision — otherwise the gap detector fires on
+// noise ("intervention differs from initial check" when the intervention is
+// literally the string "Saha müdahalesi yapıldı").
+const DECISION_PLACEHOLDERS = [
+  "belirtiye özel — teknisyen notundan çıkarıldı",
+  "belirtiye ozel — teknisyen notundan cikarildi",
+  "saha müdahalesi yapıldı",
+  "saha müdahalesi yapıldı.",
+  "saha mudahalesi yapildi",
+  "müdahale tamamlandı",
+  "mudahale tamamlandi",
+  "belirlenemedi",
+  "diğer",
+  "diger",
+  "rutin",
+  "planlı bakım",
+  "planli bakim",
+  "periyodik güvenlik testi",
+  "periyodik guvenlik testi",
+];
+function isPlaceholderValue(v) {
+  if (!v) return true;
+  const s = v.trim().toLowerCase();
+  if (s.length < 4) return true;
+  return DECISION_PLACEHOLDERS.some((p) => s === p || s.startsWith(p));
+}
+
+// Very light equipment classification — used only to pick a realistic
+// placeholder example inside the decision-gap textarea. Never affects logic.
+function equipmentKind(job) {
+  const t = `${job?.equipment || ""} ${job?.title || ""}`.toLowerCase();
+  if (/(klima|split|vrf|çiller|chiller|soğutma|sogutma|fan coil)/.test(t)) return "klima";
+  if (/(kompresör|kompresor)/.test(t)) return "kompresor";
+  if (/(pompa|pump)/.test(t)) return "pompa";
+  if (/(motor|rulman|kaplin|titreşim|titresim)/.test(t)) return "motor";
+  if (/(pano|kart|sensör|sensor|plc|invertör|invertor)/.test(t)) return "elektrik";
+  return "genel";
+}
+function decisionPlaceholderFor(job) {
+  switch (equipmentKind(job)) {
+    case "klima":
+      return "Örn: Gaz basıncı normaldi ancak filtre tamamen tıkalıydı; bu yüzden gaz kaçağı yerine hava akışı problemine yöneldim.";
+    case "kompresor":
+      return "Örn: Hat basıncı sınırdaydı ama çek valfte kaçak sesi vardı; bu yüzden regülatör ayarı yerine valfi söktüm.";
+    case "pompa":
+      return "Örn: Debi düşüktü ama emiş hattında hava vardı; bu yüzden salmastra yerine emiş körlemesini kontrol ettim.";
+    case "motor":
+      return "Örn: Yatak sıcaklığı normaldi ama titreşim Zone C'deydi; bu yüzden rulman yerine kaplin hizasına yöneldim.";
+    case "elektrik":
+      return "Örn: Sigorta sağlamdı ama kontaktör bobininde gerilim düşüktü; bu yüzden yükü değil kumanda devresini kontrol ettim.";
+    default:
+      return "Ölçümler ve gözlemler bu karara nasıl yönlendirdi, kısaca anlat.";
+  }
+}
+
+// Knowledge Gap Detector — only fires on a real, high-value technical decision:
+//   • initial diagnosis and final root cause are different AND both are real
+//     (not placeholder strings),
+//   • suggested check and performed intervention are different AND intervention
+//     is real,
+//   • kurumsal hafıza önerisi reddedildi ve elimizde gerçek bir kök neden var.
+// Returns null on routine work, placeholder-only closures, or otherwise
+// well-explained closures — those go straight to the existing review screen.
 function detectDecisionGap(job, aiMessages, fields) {
   if (!job || !fields) return null;
   const norm = (s) => (s || "").toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ");
@@ -435,34 +496,61 @@ function detectDecisionGap(job, aiMessages, fields) {
     return A.some((w) => B.includes(w));
   };
   const aiWithCauses = (aiMessages || []).filter((m) => m.role === "ai" && m.causes && m.causes.length);
-  const initialCause = aiWithCauses.length ? aiWithCauses[0].causes[0].title : null;
+  const initialDiagnosis = aiWithCauses.length ? aiWithCauses[0].causes[0].title : null;
   const initialChecks = aiWithCauses.length ? (aiWithCauses[0].checks || []).map((c) => c.label) : [];
 
-  const rootCause = fields.rootCause || "";
+  const finalRootCause = fields.rootCause || "";
   const intervention = fields.intervention || "";
+  const outcome = fields.outcome || "";
 
-  const causeDiffers = initialCause && rootCause && !overlap(initialCause, rootCause) && !overlap(rootCause, initialCause);
-  const checkDiffers = initialChecks.length && intervention && !initialChecks.some((c) => overlap(c, intervention));
-  const memRejected = job.memoryFeedback && (job.memoryFeedback.verdict === "notthis" || job.memoryFeedback.verdict === "didnt-work" || job.memoryFeedback.verdict === "rejected");
+  const rootIsReal = !isPlaceholderValue(finalRootCause);
+  const interventionIsReal = !isPlaceholderValue(intervention);
+  const initialIsReal = initialDiagnosis && !isPlaceholderValue(initialDiagnosis);
+
+  const causeDiffers =
+    initialIsReal && rootIsReal &&
+    !overlap(initialDiagnosis, finalRootCause) && !overlap(finalRootCause, initialDiagnosis);
+
+  const checkDiffers =
+    initialChecks.length && interventionIsReal &&
+    !initialChecks.some((c) => overlap(c, intervention));
+
+  const memRejected =
+    job.memoryFeedback &&
+    (job.memoryFeedback.verdict === "notthis" ||
+     job.memoryFeedback.verdict === "didnt-work" ||
+     job.memoryFeedback.verdict === "rejected") &&
+    rootIsReal;
 
   if (!causeDiffers && !checkDiffers && !memRejected) return null;
 
   let question;
   if (causeDiffers) {
-    question = `“${initialCause}” yerine “${rootCause}” yönüne geçmene hangi ölçüm veya gözlem neden oldu?`;
+    question = `İlk olası neden "${initialDiagnosis}" idi. Ancak gerçek kök neden "${finalRootCause}" olarak belirlendi. "${initialDiagnosis}" ihtimalini elemenize hangi ölçüm veya gözlem neden oldu?`;
   } else if (memRejected) {
-    question = `Kurumsal hafıza önerisi bu işte yaramadı. Kararını değiştiren gözlem veya ölçüm neydi?`;
+    question = `Kurumsal hafıza önerisi bu işte yaramadı. "${finalRootCause}" kararını almanızı sağlayan gözlem veya ölçüm neydi?`;
   } else {
-    question = `Önerilen kontrol yerine “${intervention.slice(0, 60)}${intervention.length > 60 ? "…" : ""}” yapmana ne yönlendirdi?`;
+    question = `Önerilen kontroller "${initialChecks.slice(0, 2).join(", ")}" iken siz "${intervention.slice(0, 80)}${intervention.length > 80 ? "…" : ""}" yaptınız. Bu yöne sizi ne yönlendirdi?`;
   }
 
-  const contextText = initialCause && rootCause
-    ? `İlk olası neden ${initialCause.toLowerCase()}. İş, ${rootCause.toLowerCase()} yönünde çözüldü.`
+  const contextText = causeDiffers
+    ? `İlk teşhis "${initialDiagnosis}" idi; iş "${finalRootCause}" olarak çözüldü.`
     : memRejected
-      ? `Kurumsal hafıza önerisi reddedildi. Karar başka bir yönde alındı.`
+      ? `Kurumsal hafıza önerisi reddedildi; kök neden "${finalRootCause}" olarak belirlendi.`
       : `Önerilen kontrol ile yapılan müdahale farklı.`;
 
-  return { initialCause, rootCause, intervention, outcome: fields.outcome, question, contextText };
+  return {
+    initialDiagnosis: initialIsReal ? initialDiagnosis : null,
+    finalRootCause: rootIsReal ? finalRootCause : null,
+    intervention: interventionIsReal ? intervention : null,
+    outcome: isPlaceholderValue(outcome) ? null : outcome,
+    question,
+    contextText,
+    reason: causeDiffers ? "cause_differs" : memRejected ? "memory_rejected" : "intervention_differs",
+    // legacy alias so any older reader keeps working
+    initialCause: initialIsReal ? initialDiagnosis : null,
+    rootCause: rootIsReal ? finalRootCause : null,
+  };
 }
 
 // Turns an AI-diagnosis conversation into a starter note for Close, so confirming
