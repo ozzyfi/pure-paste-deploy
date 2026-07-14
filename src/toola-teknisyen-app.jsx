@@ -1886,6 +1886,9 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
   const [fields, setFields] = useState(null);
   const [followUp, setFollowUp] = useState(null); // {id, code} of the created follow-up job
   const [previewEv, setPreviewEv] = useState(null); // evidence tapped for full-size preview
+  const [gapInfo, setGapInfo] = useState(null);
+  const [decisionReason, setDecisionReason] = useState("");
+  const [decisionSkip, setDecisionSkip] = useState(null); // "unknown" | "unimportant" | null
   const isRoutine = job ? job.taskType === "bakim" || job.taskType === "test" : false;
   const [checks, setChecks] = useState(() =>
     job ? (CHECKLIST_BY_KIND[jobKind(job)] || CHECKLIST_BY_KIND.genel).map((label) => ({ label, state: null })) : []
@@ -1900,12 +1903,30 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
   }
 
   function proceed() {
-    setFields(isRoutine ? routineClosure(job, checks, note) : draftClosure(job, note));
+    const f = isRoutine ? routineClosure(job, checks, note) : draftClosure(job, note);
+    setFields(f);
+    if (!isRoutine) {
+      const gap = detectDecisionGap(job, aiMessages, f);
+      if (gap) { setGapInfo(gap); setStep("decision-gap"); return; }
+    }
     setStep("review");
   }
   function confirm() {
     const usedMemoryId = job.memoryFeedback?.verdict === "worked" ? job.memoryFeedback.memId : undefined;
-    closeJob(job.id, { ...fields, usedMemoryId, followUp, testDone: true, closedAt: new Date().toISOString() });
+    const technicalDecision = decisionReason.trim()
+      ? {
+          decisionReason: decisionReason.trim(),
+          initialDiagnosis: gapInfo?.initialCause || null,
+          rootCause: fields.rootCause,
+          intervention: fields.intervention,
+          outcome: fields.outcome,
+          evidenceIds: job.evidence.map((e) => e.id),
+          recordedAt: new Date().toISOString(),
+        }
+      : decisionSkip
+        ? { skipped: decisionSkip, recordedAt: new Date().toISOString() }
+        : undefined;
+    closeJob(job.id, { ...fields, usedMemoryId, followUp, testDone: true, technicalDecision, closedAt: new Date().toISOString() });
     goto("summary", job.id);
   }
 
