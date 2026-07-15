@@ -1642,13 +1642,28 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
       <p className="mt-4 text-sm" style={{ color: MUTED }}>En az bir kanıt topla: fotoğraf, ölçüm veya kısa not.</p>
 
       <div className="mt-3">
-        <SectionLabel>Hızlı ekle</SectionLabel>
+        <SectionLabel>Kanıt ekle</SectionLabel>
         <div className="mt-2 grid grid-cols-3 gap-2">
           {QUICK_EVIDENCE.map((q) => {
             const Icon = q.icon;
             return (
               <button key={q.type} type="button"
-                onClick={() => { const evId = addEvidence(job.id, { type: q.type, label: q.label, note: q.note }); setTagTarget(evId); }}
+                onClick={() => {
+                  const extra = q.type === "ses"
+                    ? (() => {
+                        const mockLines = [
+                          "Klik sesi geliyor, kompresör çalışmıyor.",
+                          "Fan dönüyor ama soğutma yok, üfleme ılık.",
+                          "Dış üniteden titreşim ve metalik ses var.",
+                          "Kapasitör şişmiş, ölçümde değer düşük çıkıyor.",
+                        ];
+                        const duration = 8 + Math.floor(Math.random() * 20);
+                        return { duration, transcript: mockLines[Math.floor(Math.random() * mockLines.length)] };
+                      })()
+                    : {};
+                  const evId = addEvidence(job.id, { type: q.type, label: q.label, note: q.note, ...extra });
+                  setTagTarget(evId);
+                }}
                 className="flex flex-col items-center gap-1.5 rounded-2xl py-3.5 px-2 text-xs font-medium" style={{ background: CARD_BG, boxShadow: CARD_SHADOW, color: INK, border: "none" }}>
                 <Icon size={19} style={{ color: "#6C8F73", flexShrink: 0 }} /> {q.label}
               </button>
@@ -1660,6 +1675,7 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
             <Gauge size={19} style={{ color: "#6C8F73", flexShrink: 0 }} /> Ölçüm
           </button>
         </div>
+
         {tagTarget && job.evidence.some((e) => e.id === tagTarget) ? (
           <div className="mt-2 rounded-2xl px-3 py-2.5" style={{ background: CARD_BG, boxShadow: CARD_SHADOW }}>
             <div className="flex items-center justify-between">
