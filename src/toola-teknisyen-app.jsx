@@ -1601,12 +1601,29 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
 
   const [measurement, setMeasurement] = useState("");
   const [measureType, setMeasureType] = useState("sicaklik");
+  const [measureSheetOpen, setMeasureSheetOpen] = useState(false);
   const [tagTarget, setTagTarget] = useState(null); // last captured evidence id
   const [verifyChoice, setVerifyChoice] = useState(() => job?.verify ?? null);
   if (!job) return <EmptyState />;
   const count = job.evidence.length;
   const mType = MEASURE_TYPES.find((t) => t.id === measureType) || MEASURE_TYPES[0];
   const mHint = measurementHint(job, measureType, measurement);
+
+  function openMeasureSheet() {
+    setMeasureSheetOpen(true);
+    setTimeout(() => { measureInputRef.current?.focus(); }, 50);
+  }
+  function closeMeasureSheet() {
+    setMeasureSheetOpen(false);
+    setMeasurement("");
+  }
+  function submitMeasurement() {
+    if (!measurement.trim()) return;
+    addEvidence(job.id, { type: "olcum", label: "Ölçüm", value: `${mType.label}: ${measurement.trim()} ${mType.unit}`, measureType: mType.id, measureValue: parseFloat(measurement.replace(",", ".")), measureUnit: mType.unit });
+    setMeasurement("");
+    setMeasureSheetOpen(false);
+  }
+
 
   function chooseVerify(v) {
     setVerifyChoice(v);
