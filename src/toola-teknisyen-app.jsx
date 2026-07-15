@@ -1761,7 +1761,66 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
           <DockActionBtn icon={PauseCircle} label="Destek Bekle" onClick={() => advance("hold")} />
         </div>
       </BottomDock>
+
+      {measureSheetOpen ? (
+        <div
+          onClick={closeMeasureSheet}
+          style={{ position: "fixed", inset: 0, background: "rgba(23,24,26,0.35)", zIndex: 60, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={(e) => { e.currentTarget._touchY = e.touches[0].clientY; }}
+            onTouchMove={(e) => {
+              const start = e.currentTarget._touchY;
+              if (start != null && e.touches[0].clientY - start > 60) { e.currentTarget._touchY = null; closeMeasureSheet(); }
+            }}
+            style={{ width: "100%", maxWidth: 390, background: "#F5F2EA", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: "12px 20px 24px", boxShadow: "0 -12px 32px rgba(0,0,0,0.18)" }}
+          >
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+              <div style={{ width: 40, height: 4, borderRadius: 2, background: "#D9D4C7" }} />
+            </div>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold" style={{ color: INK }}>Ölçüm ekle</h3>
+              <button type="button" onClick={closeMeasureSheet} aria-label="Kapat" style={{ background: "none", border: "none" }}>
+                <X size={18} style={{ color: MUTED }} />
+              </button>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {MEASURE_TYPES.map((t) => (
+                <button key={t.id} type="button" onClick={() => setMeasureType(t.id)}
+                  className="rounded-full px-3 py-1.5 text-xs font-semibold"
+                  style={{ background: measureType === t.id ? DOCK_DARK : CARD_BG, color: measureType === t.id ? "#fff" : INK, boxShadow: CARD_SHADOW, border: "none" }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-3 flex gap-2">
+              <div className="flex-1 flex items-center gap-2 rounded-2xl px-4 py-2.5" style={{ background: CARD_BG, boxShadow: CARD_SHADOW }}>
+                <input ref={measureInputRef} value={measurement} onChange={(e) => setMeasurement(e.target.value)} inputMode="decimal" placeholder="Değer"
+                  className="flex-1 bg-transparent text-sm outline-none" style={{ color: INK, minWidth: 0 }}
+                  onKeyDown={(e) => { if (e.key === "Enter") submitMeasurement(); }} />
+                <span className="text-sm font-medium shrink-0" style={{ color: MUTED }}>{mType.unit}</span>
+              </div>
+            </div>
+
+            {mHint ? (
+              <div className="mt-2 flex items-center gap-1.5 text-xs font-medium" style={{ color: mHint.ok ? "#1F8A4C" : "#C53434" }}>
+                {mHint.ok ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />} {mHint.text}
+              </div>
+            ) : null}
+
+            <button type="button" disabled={!measurement.trim()} onClick={submitMeasurement}
+              className="mt-4 w-full rounded-2xl py-3 text-sm font-semibold"
+              style={{ background: measurement.trim() ? DOCK_DARK : "#DEDBD3", color: measurement.trim() ? "#fff" : "#9A968C", border: "none" }}>
+              Ölçümü ekle
+            </button>
+          </div>
+        </div>
+      ) : null}
     </>
+
   );
 }
 
