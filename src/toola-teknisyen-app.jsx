@@ -1716,41 +1716,7 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
         ) : null}
       </div>
 
-      <div className="mt-4">
-        <SectionLabel>Ölçüm</SectionLabel>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {MEASURE_TYPES.map((t) => (
-            <button key={t.id} type="button" onClick={() => setMeasureType(t.id)}
-              className="rounded-full px-3 py-1.5 text-xs font-semibold"
-              style={{ background: measureType === t.id ? DOCK_DARK : CARD_BG, color: measureType === t.id ? "#fff" : INK, boxShadow: CARD_SHADOW, border: "none" }}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div className="mt-2 flex gap-2">
-          <div className="flex-1 flex items-center gap-2 rounded-2xl px-4 py-2.5" style={{ background: CARD_BG, boxShadow: CARD_SHADOW }}>
-            <input ref={measureInputRef} value={measurement} onChange={(e) => setMeasurement(e.target.value)} inputMode="decimal" placeholder="Değer"
-              className="flex-1 bg-transparent text-sm outline-none" style={{ color: INK, minWidth: 0 }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && measurement.trim()) {
-                  addEvidence(job.id, { type: "olcum", label: "Ölçüm", value: `${mType.label}: ${measurement.trim()} ${mType.unit}`, measureType: mType.id, measureValue: parseFloat(measurement.replace(",", ".")), measureUnit: mType.unit });
-                  setMeasurement("");
-                }
-              }} />
-            <span className="text-sm font-medium shrink-0" style={{ color: MUTED }}>{mType.unit}</span>
-          </div>
-          <button type="button" disabled={!measurement.trim()}
-            onClick={() => { addEvidence(job.id, { type: "olcum", label: "Ölçüm", value: `${mType.label}: ${measurement.trim()} ${mType.unit}`, measureType: mType.id, measureValue: parseFloat(measurement.replace(",", ".")), measureUnit: mType.unit }); setMeasurement(""); }}
-            className="rounded-2xl px-4 text-sm font-semibold" style={{ background: measurement.trim() ? DOCK_DARK : "#DEDBD3", color: measurement.trim() ? "#fff" : "#9A968C", border: "none" }}>
-            Ekle
-          </button>
-        </div>
-        {mHint ? (
-          <div className="mt-2 flex items-center gap-1.5 text-xs font-medium" style={{ color: mHint.ok ? "#1F8A4C" : "#C53434" }}>
-            {mHint.ok ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />} {mHint.text}
-          </div>
-        ) : null}
-      </div>
+
 
       {count > 0 ? (
         <div className="mt-4">
