@@ -106,8 +106,8 @@ const HOLD_NEXT = {
 // Content categories (parça, hata kodu, öncesi/sonrası) are OPTIONAL one-tap
 // tags AFTER capture — classification is ToolA's job, not the technician's.
 const QUICK_EVIDENCE = [
-  { type: "foto", label: "Kamera", icon: Camera, note: "Fotoğraf/video yakalandı" },
-  { type: "ses", label: "Ses kaydı", icon: Mic, note: "Ortam sesi kaydedildi" },
+  { type: "foto", label: "Fotoğraf / Video", icon: Camera, note: "Fotoğraf/video yakalandı" },
+  { type: "ses", label: "Sesli gözlem", icon: Mic, note: "Sesli gözlem kaydedildi" },
 ];
 
 const EVIDENCE_TAGS = ["Öncesi", "Sonrası", "Parça", "Hata kodu"];
@@ -1596,7 +1596,9 @@ function measurementHint(job, typeId, value) {
 
 function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidenceTag, setStatus, setVerify }) {
   const measureInputRef = useRef(null);
-  const [note, setNote] = useState("");
+
+
+
   const [measurement, setMeasurement] = useState("");
   const [measureType, setMeasureType] = useState("sicaklik");
   const [tagTarget, setTagTarget] = useState(null); // last captured evidence id
@@ -1640,13 +1642,28 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
       <p className="mt-4 text-sm" style={{ color: MUTED }}>En az bir kanıt topla: fotoğraf, ölçüm veya kısa not.</p>
 
       <div className="mt-3">
-        <SectionLabel>Hızlı ekle</SectionLabel>
+        <SectionLabel>Kanıt ekle</SectionLabel>
         <div className="mt-2 grid grid-cols-3 gap-2">
           {QUICK_EVIDENCE.map((q) => {
             const Icon = q.icon;
             return (
               <button key={q.type} type="button"
-                onClick={() => { const evId = addEvidence(job.id, { type: q.type, label: q.label, note: q.note }); setTagTarget(evId); }}
+                onClick={() => {
+                  const extra = q.type === "ses"
+                    ? (() => {
+                        const mockLines = [
+                          "Klik sesi geliyor, kompresör çalışmıyor.",
+                          "Fan dönüyor ama soğutma yok, üfleme ılık.",
+                          "Dış üniteden titreşim ve metalik ses var.",
+                          "Kapasitör şişmiş, ölçümde değer düşük çıkıyor.",
+                        ];
+                        const duration = 8 + Math.floor(Math.random() * 20);
+                        return { duration, transcript: mockLines[Math.floor(Math.random() * mockLines.length)] };
+                      })()
+                    : {};
+                  const evId = addEvidence(job.id, { type: q.type, label: q.label, note: q.note, ...extra });
+                  setTagTarget(evId);
+                }}
                 className="flex flex-col items-center gap-1.5 rounded-2xl py-3.5 px-2 text-xs font-medium" style={{ background: CARD_BG, boxShadow: CARD_SHADOW, color: INK, border: "none" }}>
                 <Icon size={19} style={{ color: "#6C8F73", flexShrink: 0 }} /> {q.label}
               </button>
@@ -1658,6 +1675,7 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
             <Gauge size={19} style={{ color: "#6C8F73", flexShrink: 0 }} /> Ölçüm
           </button>
         </div>
+
         {tagTarget && job.evidence.some((e) => e.id === tagTarget) ? (
           <div className="mt-2 rounded-2xl px-3 py-2.5" style={{ background: CARD_BG, boxShadow: CARD_SHADOW }}>
             <div className="flex items-center justify-between">
@@ -1716,29 +1734,26 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
         ) : null}
       </div>
 
-      <div className="mt-4">
-        <SectionLabel>Yazılı gözlem</SectionLabel>
-        <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Kısa gözlemini yaz…"
-          className="mt-2 w-full rounded-2xl px-4 py-3 text-sm outline-none" style={{ background: CARD_BG, boxShadow: CARD_SHADOW, color: INK }} />
-        <button type="button" disabled={!note.trim()}
-          onClick={() => { addEvidence(job.id, { type: "not", label: "Gözlem", value: note.trim() }); setNote(""); }}
-          className="mt-2 flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium" style={{ background: "rgba(255,255,255,0.85)", color: INK, border: "none" }}>
-          <FileText size={15} /> Notu ekle
-        </button>
-      </div>
-
       {count > 0 ? (
         <div className="mt-4">
-          <SectionLabel>Toplanan kanıtlar</SectionLabel>
+          <SectionLabel>Eklenenler · {count}</SectionLabel>
           <div className="mt-2 flex flex-col gap-2">
             {job.evidence.map((ev) => (
               <div key={ev.id} className="flex items-start gap-2 rounded-2xl px-3 py-2.5 text-sm" style={{ background: CARD_BG, boxShadow: CARD_SHADOW }}>
                 <div className="min-w-0 flex-1">
-                  <span className="text-xs font-semibold rounded-full px-2 py-0.5" style={{ background: "#F1EFE9", color: MUTED }}>{ev.label}</span>
+                  <span className="text-xs font-semibold rounded-full px-2 py-0.5" style={{ background: "#F1EFE9", color: MUTED }}>
+                    {ev.label}{ev.type === "ses" && ev.duration ? ` · ${ev.duration} sn` : ""}
+                  </span>
                   {(ev.tags || []).map((tag) => (
                     <span key={tag} className="ml-1 text-xs font-medium rounded-full px-2 py-0.5" style={{ background: "#E7F1FC", color: "#2563A6" }}>{tag}</span>
                   ))}
-                  {ev.value ? <p className="mt-1" style={{ color: INK }}>{ev.value}</p> : ev.note ? <p className="mt-1" style={{ color: MUTED }}>{ev.note}</p> : null}
+                  {ev.type === "ses" && ev.transcript ? (
+                    <p className="mt-1 italic" style={{ color: INK }}>"{ev.transcript}"</p>
+                  ) : ev.value ? (
+                    <p className="mt-1" style={{ color: INK }}>{ev.value}</p>
+                  ) : ev.note ? (
+                    <p className="mt-1" style={{ color: MUTED }}>{ev.note}</p>
+                  ) : null}
                 </div>
                 <button type="button" onClick={() => removeEvidence(job.id, ev.id)} aria-label="Kaldır" style={{ background: "none", border: "none" }}>
                   <X size={15} style={{ color: MUTED }} />
@@ -1747,6 +1762,7 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
             ))}
           </div>
         </div>
+
       ) : (
         <div className="mt-4 rounded-2xl px-4 py-3 text-xs" style={{ background: "#F1EFE9", color: MUTED }}>
           Devam etmek için en az bir kanıt ekle.
