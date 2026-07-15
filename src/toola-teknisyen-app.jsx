@@ -1687,10 +1687,11 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
             );
           })}
           <button type="button"
-            onClick={() => { measureInputRef.current?.focus(); measureInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }}
+            onClick={openMeasureSheet}
             className="flex flex-col items-center gap-1.5 rounded-2xl py-3.5 px-2 text-xs font-medium" style={{ background: CARD_BG, boxShadow: CARD_SHADOW, color: INK, border: "none" }}>
             <Gauge size={19} style={{ color: "#6C8F73", flexShrink: 0 }} /> Ölçüm
           </button>
+
         </div>
 
         {tagTarget && job.evidence.some((e) => e.id === tagTarget) ? (
