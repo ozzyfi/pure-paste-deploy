@@ -106,8 +106,8 @@ const HOLD_NEXT = {
 // Content categories (parça, hata kodu, öncesi/sonrası) are OPTIONAL one-tap
 // tags AFTER capture — classification is ToolA's job, not the technician's.
 const QUICK_EVIDENCE = [
-  { type: "foto", label: "Kamera", icon: Camera, note: "Fotoğraf/video yakalandı" },
-  { type: "ses", label: "Ses kaydı", icon: Mic, note: "Ortam sesi kaydedildi" },
+  { type: "foto", label: "Fotoğraf / Video", icon: Camera, note: "Fotoğraf/video yakalandı" },
+  { type: "ses", label: "Sesli gözlem", icon: Mic, note: "Sesli gözlem kaydedildi" },
 ];
 
 const EVIDENCE_TAGS = ["Öncesi", "Sonrası", "Parça", "Hata kodu"];
