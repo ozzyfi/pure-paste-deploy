@@ -1596,8 +1596,8 @@ function measurementHint(job, typeId, value) {
 
 function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidenceTag, setStatus, setVerify }) {
   const measureInputRef = useRef(null);
-  const [, setNote] = useState("");
-  void setNote;
+
+
 
   const [measurement, setMeasurement] = useState("");
   const [measureType, setMeasureType] = useState("sicaklik");
