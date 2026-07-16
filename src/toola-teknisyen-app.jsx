@@ -1656,7 +1656,7 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
       </div>
       ) : null}
 
-      <p className="mt-4 text-sm" style={{ color: MUTED }}>En az bir kanıt topla: fotoğraf, ölçüm veya kısa not.</p>
+      <p className="mt-4 text-sm" style={{ color: MUTED }}>En az bir kanıt ekle: fotoğraf/video, sesli gözlem veya ölçüm.</p>
 
       <div className="mt-3">
         <SectionLabel>Kanıt ekle</SectionLabel>
