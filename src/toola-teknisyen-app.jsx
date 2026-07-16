@@ -1816,9 +1816,9 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
               </div>
             ) : null}
 
-            <button type="button" disabled={!measurement.trim()} onClick={submitMeasurement}
+            <button type="button" disabled={!isMeasurementValid(measurement)} onClick={submitMeasurement}
               className="mt-4 w-full rounded-2xl py-3 text-sm font-semibold"
-              style={{ background: measurement.trim() ? DOCK_DARK : "#DEDBD3", color: measurement.trim() ? "#fff" : "#9A968C", border: "none" }}>
+              style={{ background: isMeasurementValid(measurement) ? DOCK_DARK : "#DEDBD3", color: isMeasurementValid(measurement) ? "#fff" : "#9A968C", border: "none" }}>
               Ölçümü ekle
             </button>
           </div>
