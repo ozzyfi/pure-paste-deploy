@@ -1594,6 +1594,12 @@ function measurementHint(job, typeId, value) {
   return null;
 }
 
+function isMeasurementValid(value) {
+  const v = String(value ?? "").trim();
+  if (!v) return false;
+  return Number.isFinite(Number(v.replace(",", ".")));
+}
+
 function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidenceTag, setStatus, setVerify }) {
   const measureInputRef = useRef(null);
 
@@ -1611,15 +1617,14 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
 
   function openMeasureSheet() {
     setMeasureSheetOpen(true);
-    setTimeout(() => { measureInputRef.current?.focus(); }, 50);
   }
   function closeMeasureSheet() {
     setMeasureSheetOpen(false);
     setMeasurement("");
   }
   function submitMeasurement() {
-    if (!measurement.trim()) return;
-    addEvidence(job.id, { type: "olcum", label: "Ölçüm", value: `${mType.label}: ${measurement.trim()} ${mType.unit}`, measureType: mType.id, measureValue: parseFloat(measurement.replace(",", ".")), measureUnit: mType.unit });
+    if (!isMeasurementValid(measurement)) return;
+    addEvidence(job.id, { type: "olcum", label: "Ölçüm", value: `${mType.label}: ${measurement.trim()} ${mType.unit}`, measureType: mType.id, measureValue: parseFloat(measurement.trim().replace(",", ".")), measureUnit: mType.unit });
     setMeasurement("");
     setMeasureSheetOpen(false);
   }
@@ -1656,7 +1661,7 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
       </div>
       ) : null}
 
-      <p className="mt-4 text-sm" style={{ color: MUTED }}>En az bir kanıt topla: fotoğraf, ölçüm veya kısa not.</p>
+      <p className="mt-4 text-sm" style={{ color: MUTED }}>En az bir kanıt ekle: fotoğraf/video, sesli gözlem veya ölçüm.</p>
 
       <div className="mt-3">
         <SectionLabel>Kanıt ekle</SectionLabel>
@@ -1811,9 +1816,9 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
               </div>
             ) : null}
 
-            <button type="button" disabled={!measurement.trim()} onClick={submitMeasurement}
+            <button type="button" disabled={!isMeasurementValid(measurement)} onClick={submitMeasurement}
               className="mt-4 w-full rounded-2xl py-3 text-sm font-semibold"
-              style={{ background: measurement.trim() ? DOCK_DARK : "#DEDBD3", color: measurement.trim() ? "#fff" : "#9A968C", border: "none" }}>
+              style={{ background: isMeasurementValid(measurement) ? DOCK_DARK : "#DEDBD3", color: isMeasurementValid(measurement) ? "#fff" : "#9A968C", border: "none" }}>
               Ölçümü ekle
             </button>
           </div>
