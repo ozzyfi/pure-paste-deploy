@@ -1594,6 +1594,12 @@ function measurementHint(job, typeId, value) {
   return null;
 }
 
+function isMeasurementValid(value) {
+  const v = String(value ?? "").trim();
+  if (!v) return false;
+  return Number.isFinite(Number(v.replace(",", ".")));
+}
+
 function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidenceTag, setStatus, setVerify }) {
   const measureInputRef = useRef(null);
 
