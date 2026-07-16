@@ -1617,15 +1617,14 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
 
   function openMeasureSheet() {
     setMeasureSheetOpen(true);
-    setTimeout(() => { measureInputRef.current?.focus(); }, 50);
   }
   function closeMeasureSheet() {
     setMeasureSheetOpen(false);
     setMeasurement("");
   }
   function submitMeasurement() {
-    if (!measurement.trim()) return;
-    addEvidence(job.id, { type: "olcum", label: "Ölçüm", value: `${mType.label}: ${measurement.trim()} ${mType.unit}`, measureType: mType.id, measureValue: parseFloat(measurement.replace(",", ".")), measureUnit: mType.unit });
+    if (!isMeasurementValid(measurement)) return;
+    addEvidence(job.id, { type: "olcum", label: "Ölçüm", value: `${mType.label}: ${measurement.trim()} ${mType.unit}`, measureType: mType.id, measureValue: parseFloat(measurement.trim().replace(",", ".")), measureUnit: mType.unit });
     setMeasurement("");
     setMeasureSheetOpen(false);
   }
