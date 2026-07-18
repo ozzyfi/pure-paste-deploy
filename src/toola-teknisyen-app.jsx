@@ -1087,7 +1087,7 @@ function BottomDock({ children, onHeight }) {
     return () => ro.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return <div ref={ref} style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "0 20px 22px" }}>{children}</div>;
+  return <div ref={ref} style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "0 20px calc(env(safe-area-inset-bottom) + 22px)" }}>{children}</div>;
 }
 
 function BottomSheet({ open, onClose, children }) {
@@ -1264,10 +1264,74 @@ function NewJobSheet({ open, onClose, onCreate, jobs }) {
 
 function QrSheet({ open, onClose, jobs, onPick }) {
   const candidates = jobs.filter((j) => j.status !== "tamamlandi");
+  const videoRef = useRef(null);
+  const [scanState, setScanState] = useState("idle"); // idle | scanning | unsupported | denied
+  const [scanned, setScanned] = useState(null);
+
+  useEffect(() => {
+    if (!open) {
+      setScanState("idle"); setScanned(null);
+      return;
+    }
+    let stream = null;
+    let raf = null;
+    let cancelled = false;
+    async function start() {
+      try {
+        const BD = typeof window !== "undefined" ? window.BarcodeDetector : null;
+        if (!BD || !navigator?.mediaDevices?.getUserMedia) { setScanState("unsupported"); return; }
+        setScanState("scanning");
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+        const detector = new BD({ formats: ["qr_code", "code_128", "ean_13"] });
+        const loop = async () => {
+          if (cancelled || !videoRef.current) return;
+          try {
+            const codes = await detector.detect(videoRef.current);
+            if (codes && codes[0]) {
+              setScanned(codes[0].rawValue || "");
+              return;
+            }
+          } catch {/* keep looping */}
+          raf = requestAnimationFrame(loop);
+        };
+        raf = requestAnimationFrame(loop);
+      } catch (err) {
+        setScanState("denied");
+      }
+    }
+    start();
+    return () => {
+      cancelled = true;
+      if (raf) cancelAnimationFrame(raf);
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+    };
+  }, [open]);
+
   return (
     <BottomSheet open={open} onClose={onClose}>
       <div className="text-lg font-bold" style={{ color: INK }}>QR / Barkod tara</div>
-      <p className="mt-1 text-sm" style={{ color: MUTED }}>Gerçek kurulumda kamera açılır ve ekipman etiketi okunur. Demo için bir etiket seç:</p>
+      {scanState === "scanning" ? (
+        <div className="mt-3 overflow-hidden rounded-2xl" style={{ background: "#000", aspectRatio: "4/3" }}>
+          <video ref={videoRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        </div>
+      ) : null}
+      {scanned ? (
+        <div className="mt-3 rounded-2xl px-3 py-2.5 text-xs" style={{ background: "#DCF3E3", color: "#1F5C34" }}>
+          Okunan: <span className="font-semibold">{scanned}</span>
+        </div>
+      ) : null}
+      <p className="mt-3 text-sm" style={{ color: MUTED }}>
+        {scanState === "unsupported"
+          ? "Bu cihazda kamera taraması desteklenmiyor. Demo için etiket seç:"
+          : scanState === "denied"
+          ? "Kamera izni verilmedi. Demo için etiket seç:"
+          : "Ekipman etiketini kameraya göster ya da demo için seç:"}
+      </p>
       <div className="mt-3 flex flex-col gap-2">
         {candidates.map((j) => (
           <button key={j.id} type="button" onClick={() => onPick(j.id)}
@@ -1541,7 +1605,6 @@ function JobDetailScreen({ job, goto, resumeJob, markSeen }) {
         </div>
       ) : null}
 
-      <div style={{ height: 100 }} />
       <BottomDock>
         <Dock primaryAction={{ label: primaryLabel, onClick: onPrimary }} onAsk={() => goto("ai", job.id)} plusItems={jobPlusItems(goto, job)} />
       </BottomDock>
@@ -1609,6 +1672,7 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
   const [measureType, setMeasureType] = useState("sicaklik");
   const [measureSheetOpen, setMeasureSheetOpen] = useState(false);
   const [tagTarget, setTagTarget] = useState(null); // last captured evidence id
+  const cameraInputRef = useRef(null);
   const [verifyChoice, setVerifyChoice] = useState(() => job?.verify ?? null);
   if (!job) return <EmptyState />;
   const count = job.evidence.length;
@@ -1665,12 +1729,38 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
 
       <div className="mt-3">
         <SectionLabel>Kanıt ekle</SectionLabel>
+        {/* Real mobile capture — hidden inputs the quick buttons trigger */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*,video/*"
+          capture="environment"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            const isVideo = file.type.startsWith("video/");
+            const previewUrl = typeof URL !== "undefined" ? URL.createObjectURL(file) : undefined;
+            const evId = addEvidence(job.id, {
+              type: isVideo ? "video" : "foto",
+              label: isVideo ? "Video" : "Fotoğraf",
+              note: file.name,
+              previewUrl,
+              fileSize: file.size,
+            });
+            setTagTarget(evId);
+            e.target.value = "";
+          }}
+        />
         <div className="mt-2 grid grid-cols-3 gap-2">
           {QUICK_EVIDENCE.map((q) => {
             const Icon = q.icon;
             return (
               <button key={q.type} type="button"
                 onClick={() => {
+                  if (q.type === "foto") {
+                    if (cameraInputRef.current) { cameraInputRef.current.click(); return; }
+                  }
                   const extra = q.type === "ses"
                     ? (() => {
                         const mockLines = [
@@ -1698,6 +1788,7 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
           </button>
 
         </div>
+
 
         {tagTarget && job.evidence.some((e) => e.id === tagTarget) ? (
           <div className="mt-2 rounded-2xl px-3 py-2.5" style={{ background: CARD_BG, boxShadow: CARD_SHADOW }}>
@@ -1758,7 +1849,6 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
         </div>
       )}
 
-      <div style={{ height: 100 }} />
       <BottomDock>
         <div className="flex items-stretch gap-2">
           <DockActionBtn icon={Brain} label="AI ile Teşhis" onClick={() => advance("ai")} />
@@ -2104,31 +2194,35 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
               // (that photo becomes the follow-up job's backbone).
               const itemEv = job.evidence.some((e) => (e.tags || []).includes(c.label));
               return (
-              <div key={c.label} className="flex items-center gap-2 rounded-2xl px-3 py-2.5" style={{ background: CARD_BG, boxShadow: CARD_SHADOW }}>
-                <button type="button" aria-label={`${c.label} için fotoğraf ekle`}
-                  onClick={() => addEvidence(job.id, { type: "foto", label: "Kamera", note: `${c.label} fotoğrafı`, tags: [c.label] })}
-                  className="flex items-center justify-center rounded-full shrink-0"
-                  style={{ width: 32, height: 32, border: "none",
-                    background: itemEv ? "#DCF3E3" : c.state === "kaldi" ? "#FDF3E4" : "#F1EFE9",
-                    color: itemEv ? "#1F8A4C" : c.state === "kaldi" ? "#9C6B0A" : MUTED }}>
-                  {itemEv ? <CheckCircle2 size={15} /> : <Camera size={15} />}
-                </button>
-                <span className="flex-1 text-sm" style={{ color: INK }}>{c.label}</span>
-                <button type="button" onClick={() => setCheck(i, "gecti")}
-                  className="rounded-full px-3 py-1.5 text-xs font-semibold"
-                  style={{ background: c.state === "gecti" ? "#1F8A4C" : "#F1EFE9", color: c.state === "gecti" ? "#fff" : MUTED, border: "none" }}>
-                  Geçti
-                </button>
-                <button type="button" onClick={() => setCheck(i, "kaldi")}
-                  className="rounded-full px-3 py-1.5 text-xs font-semibold"
-                  style={{ background: c.state === "kaldi" ? "#C53434" : "#F1EFE9", color: c.state === "kaldi" ? "#fff" : MUTED, border: "none" }}>
-                  Kaldı
-                </button>
-                <button type="button" onClick={() => setCheck(i, "na")}
-                  className="rounded-full px-3 py-1.5 text-xs font-semibold"
-                  style={{ background: c.state === "na" ? MUTED : "#F1EFE9", color: c.state === "na" ? "#fff" : MUTED, border: "none" }}>
-                  Yapılamadı
-                </button>
+              <div key={c.label} className="rounded-2xl px-3 py-2.5" style={{ background: CARD_BG, boxShadow: CARD_SHADOW }}>
+                <div className="flex items-center gap-2 min-w-0">
+                  <button type="button" aria-label={`${c.label} için fotoğraf ekle`}
+                    onClick={() => addEvidence(job.id, { type: "foto", label: "Kamera", note: `${c.label} fotoğrafı`, tags: [c.label] })}
+                    className="flex items-center justify-center rounded-full shrink-0"
+                    style={{ width: 32, height: 32, border: "none",
+                      background: itemEv ? "#DCF3E3" : c.state === "kaldi" ? "#FDF3E4" : "#F1EFE9",
+                      color: itemEv ? "#1F8A4C" : c.state === "kaldi" ? "#9C6B0A" : MUTED }}>
+                    {itemEv ? <CheckCircle2 size={15} /> : <Camera size={15} />}
+                  </button>
+                  <span className="flex-1 min-w-0 truncate text-sm" style={{ color: INK }}>{c.label}</span>
+                </div>
+                <div className="mt-2 flex gap-1.5 w-full">
+                  <button type="button" onClick={() => setCheck(i, "gecti")}
+                    className="flex-1 rounded-full px-3 py-1.5 text-xs font-semibold"
+                    style={{ background: c.state === "gecti" ? "#1F8A4C" : "#F1EFE9", color: c.state === "gecti" ? "#fff" : MUTED, border: "none" }}>
+                    Geçti
+                  </button>
+                  <button type="button" onClick={() => setCheck(i, "kaldi")}
+                    className="flex-1 rounded-full px-3 py-1.5 text-xs font-semibold"
+                    style={{ background: c.state === "kaldi" ? "#C53434" : "#F1EFE9", color: c.state === "kaldi" ? "#fff" : MUTED, border: "none" }}>
+                    Kaldı
+                  </button>
+                  <button type="button" onClick={() => setCheck(i, "na")}
+                    className="flex-1 rounded-full px-3 py-1.5 text-xs font-semibold"
+                    style={{ background: c.state === "na" ? MUTED : "#F1EFE9", color: c.state === "na" ? "#fff" : MUTED, border: "none" }}>
+                    Yapılamadı
+                  </button>
+                </div>
               </div>
               );
             })}
@@ -2154,7 +2248,6 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
             Kanıt olmadan iş kapatılamaz. Kanıt ekranına dönüp en az bir kanıt ekle.
           </div>
         ) : null}
-        <div style={{ height: 100 }} />
         <BottomDock>
           <Dock primaryAction={{ label: "Kapanışı oluştur", onClick: proceed, disabled: !canReview }} onAsk={() => goto("ai", job.id)} plusItems={jobPlusItems(goto, job)} />
         </BottomDock>
@@ -2237,7 +2330,6 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
             Bu karar önemli değildi
           </button>
         </div>
-        <div style={{ height: 160 }} />
         <BottomDock>
           <Dock hideMic primaryAction={{ label: "Cevabı kaydet ve özeti gör", onClick: () => setStep("review"), disabled: decisionReason.trim().length < 3 }} />
         </BottomDock>
@@ -2326,7 +2418,6 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
         )}
       </div>
       ) : null}
-      <div style={{ height: 100 }} />
       <BottomDock>
         <Dock primaryAction={{ label: "Onayla ve gönder", onClick: confirm, disabled: !hasEvidence }} onAsk={() => goto("ai", job.id)} />
       </BottomDock>
@@ -2385,7 +2476,6 @@ function HoldScreen({ job, goto, holdJob }) {
           className="mt-2 w-full rounded-3xl p-4 text-sm outline-none" style={{ background: CARD_BG, boxShadow: CARD_SHADOW, color: INK }} />
       </div>
 
-      <div style={{ height: 100 }} />
       <BottomDock>
         <Dock primaryAction={{ label: "Beklemeye al", onClick: submit, disabled: !canSubmit }} onAsk={() => goto("ai", job.id)} plusItems={jobPlusItems(goto, job)} />
       </BottomDock>
@@ -2519,7 +2609,6 @@ function SummaryScreen({ job, goto, hasChat }) {
         </div>
       </div>
 
-      <div style={{ height: 100 }} />
       <BottomDock>
         <Dock primaryAction={{ label: "İşlerime dön", onClick: () => goto("home") }} onAsk={() => goto("ai", job.id)} />
       </BottomDock>
@@ -2669,7 +2758,6 @@ function RouteScreen({ jobs, goto, plusItems }) {
         ))}
       </div>
 
-      <div style={{ height: 100 }} />
       <BottomDock>
         <Dock
           primaryAction={mapsDirUrl ? { label: "Rotayı haritada aç", onClick: () => window.open(mapsDirUrl, "_blank") } : { label: "İşlerime dön", onClick: () => goto("home") }}
@@ -2728,7 +2816,6 @@ function HistoryScreen({ jobs, goto, plusItems }) {
           </div>
         )}
       </div>
-      <div style={{ height: 100 }} />
       <BottomDock>
         <Dock onAsk={() => goto("assistant")} plusItems={plusItems} />
       </BottomDock>
@@ -2986,19 +3073,53 @@ export default function ToolAApp() {
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center" style={{ background: "#EAE7E0", padding: 20 }}>
+    <div className="toola-root">
       <style>{`
         .toola-divide > *:not(:first-child) { border-top: 1px solid #F1EFE8; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         @keyframes toola-pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.14); opacity: 0.7; } }
         textarea, input { font-family: inherit; }
+        .toola-root {
+          width: 100%;
+          min-height: 100dvh;
+          background: ${"#EAE7E0"};
+          display: flex;
+          align-items: stretch;
+          justify-content: center;
+          padding: 0;
+        }
+        .toola-shell {
+          position: relative;
+          width: 100%;
+          max-width: none;
+          min-height: 100dvh;
+          border-radius: 0;
+          background: ${PAGE_GRADIENT};
+          box-shadow: none;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        .toola-scroll {
+          flex: 1;
+          overflow-y: auto;
+          padding: calc(env(safe-area-inset-top) + 18px) 20px calc(env(safe-area-inset-bottom) + 128px);
+        }
+        @media (min-width: 768px) {
+          .toola-root { padding: 20px; align-items: center; min-height: 100vh; }
+          .toola-shell {
+            max-width: 390px;
+            min-height: 0;
+            height: min(844px, 100vh - 40px);
+            border-radius: 36px;
+            box-shadow: 0 40px 80px rgba(20,20,20,0.28), 0 10px 24px rgba(20,20,20,0.15);
+          }
+          .toola-scroll { padding: 18px 20px 0; }
+        }
       `}</style>
-      <div
-        className="relative w-full flex flex-col overflow-hidden"
-        style={{ maxWidth: 390, height: "min(844px, 100vh - 40px)", borderRadius: 36, background: PAGE_GRADIENT, boxShadow: "0 40px 80px rgba(20,20,20,0.28), 0 10px 24px rgba(20,20,20,0.15)" }}
-      >
-        <div ref={scrollRef} className="flex-1 overflow-y-auto no-scrollbar" style={{ padding: "18px 20px 0" }}>
+      <div className="toola-shell">
+        <div ref={scrollRef} className="toola-scroll no-scrollbar">
           <div className="flex items-center justify-center gap-1.5 pb-1">
             <span style={{ width: 6, height: 6, borderRadius: 9999, background: "#1F8A4C", display: "inline-block" }} />
             <span className="text-xs font-medium" style={{ color: MUTED }}>Çevrimdışı hazır · senkronize</span>
@@ -3013,3 +3134,4 @@ export default function ToolAApp() {
     </div>
   );
 }
+
