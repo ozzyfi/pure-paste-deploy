@@ -1608,6 +1608,7 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
   const [measureType, setMeasureType] = useState("sicaklik");
   const [measureSheetOpen, setMeasureSheetOpen] = useState(false);
   const [tagTarget, setTagTarget] = useState(null); // last captured evidence id
+  const cameraInputRef = useRef(null);
   const [verifyChoice, setVerifyChoice] = useState(() => job?.verify ?? null);
   if (!job) return <EmptyState />;
   const count = job.evidence.length;
