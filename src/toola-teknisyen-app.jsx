@@ -1264,10 +1264,74 @@ function NewJobSheet({ open, onClose, onCreate, jobs }) {
 
 function QrSheet({ open, onClose, jobs, onPick }) {
   const candidates = jobs.filter((j) => j.status !== "tamamlandi");
+  const videoRef = useRef(null);
+  const [scanState, setScanState] = useState("idle"); // idle | scanning | unsupported | denied
+  const [scanned, setScanned] = useState(null);
+
+  useEffect(() => {
+    if (!open) {
+      setScanState("idle"); setScanned(null);
+      return;
+    }
+    let stream = null;
+    let raf = null;
+    let cancelled = false;
+    async function start() {
+      try {
+        const BD = typeof window !== "undefined" ? window.BarcodeDetector : null;
+        if (!BD || !navigator?.mediaDevices?.getUserMedia) { setScanState("unsupported"); return; }
+        setScanState("scanning");
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+        const detector = new BD({ formats: ["qr_code", "code_128", "ean_13"] });
+        const loop = async () => {
+          if (cancelled || !videoRef.current) return;
+          try {
+            const codes = await detector.detect(videoRef.current);
+            if (codes && codes[0]) {
+              setScanned(codes[0].rawValue || "");
+              return;
+            }
+          } catch {/* keep looping */}
+          raf = requestAnimationFrame(loop);
+        };
+        raf = requestAnimationFrame(loop);
+      } catch (err) {
+        setScanState("denied");
+      }
+    }
+    start();
+    return () => {
+      cancelled = true;
+      if (raf) cancelAnimationFrame(raf);
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+    };
+  }, [open]);
+
   return (
     <BottomSheet open={open} onClose={onClose}>
       <div className="text-lg font-bold" style={{ color: INK }}>QR / Barkod tara</div>
-      <p className="mt-1 text-sm" style={{ color: MUTED }}>Gerçek kurulumda kamera açılır ve ekipman etiketi okunur. Demo için bir etiket seç:</p>
+      {scanState === "scanning" ? (
+        <div className="mt-3 overflow-hidden rounded-2xl" style={{ background: "#000", aspectRatio: "4/3" }}>
+          <video ref={videoRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        </div>
+      ) : null}
+      {scanned ? (
+        <div className="mt-3 rounded-2xl px-3 py-2.5 text-xs" style={{ background: "#DCF3E3", color: "#1F5C34" }}>
+          Okunan: <span className="font-semibold">{scanned}</span>
+        </div>
+      ) : null}
+      <p className="mt-3 text-sm" style={{ color: MUTED }}>
+        {scanState === "unsupported"
+          ? "Bu cihazda kamera taraması desteklenmiyor. Demo için etiket seç:"
+          : scanState === "denied"
+          ? "Kamera izni verilmedi. Demo için etiket seç:"
+          : "Ekipman etiketini kameraya göster ya da demo için seç:"}
+      </p>
       <div className="mt-3 flex flex-col gap-2">
         {candidates.map((j) => (
           <button key={j.id} type="button" onClick={() => onPick(j.id)}
