@@ -2986,19 +2986,53 @@ export default function ToolAApp() {
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center" style={{ background: "#EAE7E0", padding: 20 }}>
+    <div className="toola-root">
       <style>{`
         .toola-divide > *:not(:first-child) { border-top: 1px solid #F1EFE8; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         @keyframes toola-pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.14); opacity: 0.7; } }
         textarea, input { font-family: inherit; }
+        .toola-root {
+          width: 100%;
+          min-height: 100dvh;
+          background: ${"#EAE7E0"};
+          display: flex;
+          align-items: stretch;
+          justify-content: center;
+          padding: 0;
+        }
+        .toola-shell {
+          position: relative;
+          width: 100%;
+          max-width: none;
+          min-height: 100dvh;
+          border-radius: 0;
+          background: ${PAGE_GRADIENT};
+          box-shadow: none;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        .toola-scroll {
+          flex: 1;
+          overflow-y: auto;
+          padding: calc(env(safe-area-inset-top) + 18px) 20px calc(env(safe-area-inset-bottom) + 128px);
+        }
+        @media (min-width: 768px) {
+          .toola-root { padding: 20px; align-items: center; min-height: 100vh; }
+          .toola-shell {
+            max-width: 390px;
+            min-height: 0;
+            height: min(844px, 100vh - 40px);
+            border-radius: 36px;
+            box-shadow: 0 40px 80px rgba(20,20,20,0.28), 0 10px 24px rgba(20,20,20,0.15);
+          }
+          .toola-scroll { padding: 18px 20px 0; }
+        }
       `}</style>
-      <div
-        className="relative w-full flex flex-col overflow-hidden"
-        style={{ maxWidth: 390, height: "min(844px, 100vh - 40px)", borderRadius: 36, background: PAGE_GRADIENT, boxShadow: "0 40px 80px rgba(20,20,20,0.28), 0 10px 24px rgba(20,20,20,0.15)" }}
-      >
-        <div ref={scrollRef} className="flex-1 overflow-y-auto no-scrollbar" style={{ padding: "18px 20px 0" }}>
+      <div className="toola-shell">
+        <div ref={scrollRef} className="toola-scroll no-scrollbar">
           <div className="flex items-center justify-center gap-1.5 pb-1">
             <span style={{ width: 6, height: 6, borderRadius: 9999, background: "#1F8A4C", display: "inline-block" }} />
             <span className="text-xs font-medium" style={{ color: MUTED }}>Çevrimdışı hazır · senkronize</span>
@@ -3013,3 +3047,4 @@ export default function ToolAApp() {
     </div>
   );
 }
+
