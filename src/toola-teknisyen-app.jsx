@@ -2102,31 +2102,35 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
               // (that photo becomes the follow-up job's backbone).
               const itemEv = job.evidence.some((e) => (e.tags || []).includes(c.label));
               return (
-              <div key={c.label} className="flex items-center gap-2 rounded-2xl px-3 py-2.5" style={{ background: CARD_BG, boxShadow: CARD_SHADOW }}>
-                <button type="button" aria-label={`${c.label} için fotoğraf ekle`}
-                  onClick={() => addEvidence(job.id, { type: "foto", label: "Kamera", note: `${c.label} fotoğrafı`, tags: [c.label] })}
-                  className="flex items-center justify-center rounded-full shrink-0"
-                  style={{ width: 32, height: 32, border: "none",
-                    background: itemEv ? "#DCF3E3" : c.state === "kaldi" ? "#FDF3E4" : "#F1EFE9",
-                    color: itemEv ? "#1F8A4C" : c.state === "kaldi" ? "#9C6B0A" : MUTED }}>
-                  {itemEv ? <CheckCircle2 size={15} /> : <Camera size={15} />}
-                </button>
-                <span className="flex-1 text-sm" style={{ color: INK }}>{c.label}</span>
-                <button type="button" onClick={() => setCheck(i, "gecti")}
-                  className="rounded-full px-3 py-1.5 text-xs font-semibold"
-                  style={{ background: c.state === "gecti" ? "#1F8A4C" : "#F1EFE9", color: c.state === "gecti" ? "#fff" : MUTED, border: "none" }}>
-                  Geçti
-                </button>
-                <button type="button" onClick={() => setCheck(i, "kaldi")}
-                  className="rounded-full px-3 py-1.5 text-xs font-semibold"
-                  style={{ background: c.state === "kaldi" ? "#C53434" : "#F1EFE9", color: c.state === "kaldi" ? "#fff" : MUTED, border: "none" }}>
-                  Kaldı
-                </button>
-                <button type="button" onClick={() => setCheck(i, "na")}
-                  className="rounded-full px-3 py-1.5 text-xs font-semibold"
-                  style={{ background: c.state === "na" ? MUTED : "#F1EFE9", color: c.state === "na" ? "#fff" : MUTED, border: "none" }}>
-                  Yapılamadı
-                </button>
+              <div key={c.label} className="rounded-2xl px-3 py-2.5" style={{ background: CARD_BG, boxShadow: CARD_SHADOW }}>
+                <div className="flex items-center gap-2 min-w-0">
+                  <button type="button" aria-label={`${c.label} için fotoğraf ekle`}
+                    onClick={() => addEvidence(job.id, { type: "foto", label: "Kamera", note: `${c.label} fotoğrafı`, tags: [c.label] })}
+                    className="flex items-center justify-center rounded-full shrink-0"
+                    style={{ width: 32, height: 32, border: "none",
+                      background: itemEv ? "#DCF3E3" : c.state === "kaldi" ? "#FDF3E4" : "#F1EFE9",
+                      color: itemEv ? "#1F8A4C" : c.state === "kaldi" ? "#9C6B0A" : MUTED }}>
+                    {itemEv ? <CheckCircle2 size={15} /> : <Camera size={15} />}
+                  </button>
+                  <span className="flex-1 min-w-0 truncate text-sm" style={{ color: INK }}>{c.label}</span>
+                </div>
+                <div className="mt-2 flex gap-1.5 w-full">
+                  <button type="button" onClick={() => setCheck(i, "gecti")}
+                    className="flex-1 rounded-full px-3 py-1.5 text-xs font-semibold"
+                    style={{ background: c.state === "gecti" ? "#1F8A4C" : "#F1EFE9", color: c.state === "gecti" ? "#fff" : MUTED, border: "none" }}>
+                    Geçti
+                  </button>
+                  <button type="button" onClick={() => setCheck(i, "kaldi")}
+                    className="flex-1 rounded-full px-3 py-1.5 text-xs font-semibold"
+                    style={{ background: c.state === "kaldi" ? "#C53434" : "#F1EFE9", color: c.state === "kaldi" ? "#fff" : MUTED, border: "none" }}>
+                    Kaldı
+                  </button>
+                  <button type="button" onClick={() => setCheck(i, "na")}
+                    className="flex-1 rounded-full px-3 py-1.5 text-xs font-semibold"
+                    style={{ background: c.state === "na" ? MUTED : "#F1EFE9", color: c.state === "na" ? "#fff" : MUTED, border: "none" }}>
+                    Yapılamadı
+                  </button>
+                </div>
               </div>
               );
             })}
