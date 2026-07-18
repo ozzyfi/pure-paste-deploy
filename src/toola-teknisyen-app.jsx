@@ -1087,7 +1087,7 @@ function BottomDock({ children, onHeight }) {
     return () => ro.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return <div ref={ref} style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "0 20px 22px" }}>{children}</div>;
+  return <div ref={ref} style={{ position: "absolute", left: 0, right: 0, bottom: 0, padding: "0 20px calc(env(safe-area-inset-bottom) + 22px)" }}>{children}</div>;
 }
 
 function BottomSheet({ open, onClose, children }) {
