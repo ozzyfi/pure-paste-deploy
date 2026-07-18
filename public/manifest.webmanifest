@@ -1,0 +1,15 @@
+{
+  "name": "ToolA Teknisyen",
+  "short_name": "ToolA",
+  "description": "Saha teknisyeni için AI destekli iş yönetimi.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#EAE7E0",
+  "theme_color": "#EAE7E0",
+  "lang": "tr",
+  "icons": [
+    { "src": "/favicon.ico", "sizes": "any", "type": "image/x-icon" }
+  ]
+}
