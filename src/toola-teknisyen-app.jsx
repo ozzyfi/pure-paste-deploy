@@ -1541,7 +1541,6 @@ function JobDetailScreen({ job, goto, resumeJob, markSeen }) {
         </div>
       ) : null}
 
-      <div style={{ height: 100 }} />
       <BottomDock>
         <Dock primaryAction={{ label: primaryLabel, onClick: onPrimary }} onAsk={() => goto("ai", job.id)} plusItems={jobPlusItems(goto, job)} />
       </BottomDock>
@@ -1758,7 +1757,6 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
         </div>
       )}
 
-      <div style={{ height: 100 }} />
       <BottomDock>
         <div className="flex items-stretch gap-2">
           <DockActionBtn icon={Brain} label="AI ile Teşhis" onClick={() => advance("ai")} />
@@ -2154,7 +2152,6 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
             Kanıt olmadan iş kapatılamaz. Kanıt ekranına dönüp en az bir kanıt ekle.
           </div>
         ) : null}
-        <div style={{ height: 100 }} />
         <BottomDock>
           <Dock primaryAction={{ label: "Kapanışı oluştur", onClick: proceed, disabled: !canReview }} onAsk={() => goto("ai", job.id)} plusItems={jobPlusItems(goto, job)} />
         </BottomDock>
@@ -2237,7 +2234,6 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
             Bu karar önemli değildi
           </button>
         </div>
-        <div style={{ height: 160 }} />
         <BottomDock>
           <Dock hideMic primaryAction={{ label: "Cevabı kaydet ve özeti gör", onClick: () => setStep("review"), disabled: decisionReason.trim().length < 3 }} />
         </BottomDock>
@@ -2326,7 +2322,6 @@ function CloseScreen({ job, goto, closeJob, aiMessages, createFollowUp, addEvide
         )}
       </div>
       ) : null}
-      <div style={{ height: 100 }} />
       <BottomDock>
         <Dock primaryAction={{ label: "Onayla ve gönder", onClick: confirm, disabled: !hasEvidence }} onAsk={() => goto("ai", job.id)} />
       </BottomDock>
@@ -2385,7 +2380,6 @@ function HoldScreen({ job, goto, holdJob }) {
           className="mt-2 w-full rounded-3xl p-4 text-sm outline-none" style={{ background: CARD_BG, boxShadow: CARD_SHADOW, color: INK }} />
       </div>
 
-      <div style={{ height: 100 }} />
       <BottomDock>
         <Dock primaryAction={{ label: "Beklemeye al", onClick: submit, disabled: !canSubmit }} onAsk={() => goto("ai", job.id)} plusItems={jobPlusItems(goto, job)} />
       </BottomDock>
@@ -2519,7 +2513,6 @@ function SummaryScreen({ job, goto, hasChat }) {
         </div>
       </div>
 
-      <div style={{ height: 100 }} />
       <BottomDock>
         <Dock primaryAction={{ label: "İşlerime dön", onClick: () => goto("home") }} onAsk={() => goto("ai", job.id)} />
       </BottomDock>
@@ -2669,7 +2662,6 @@ function RouteScreen({ jobs, goto, plusItems }) {
         ))}
       </div>
 
-      <div style={{ height: 100 }} />
       <BottomDock>
         <Dock
           primaryAction={mapsDirUrl ? { label: "Rotayı haritada aç", onClick: () => window.open(mapsDirUrl, "_blank") } : { label: "İşlerime dön", onClick: () => goto("home") }}
@@ -2728,7 +2720,6 @@ function HistoryScreen({ jobs, goto, plusItems }) {
           </div>
         )}
       </div>
-      <div style={{ height: 100 }} />
       <BottomDock>
         <Dock onAsk={() => goto("assistant")} plusItems={plusItems} />
       </BottomDock>
