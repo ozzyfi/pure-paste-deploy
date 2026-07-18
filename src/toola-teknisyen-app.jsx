@@ -1664,12 +1664,38 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
 
       <div className="mt-3">
         <SectionLabel>Kanıt ekle</SectionLabel>
+        {/* Real mobile capture — hidden inputs the quick buttons trigger */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*,video/*"
+          capture="environment"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            const isVideo = file.type.startsWith("video/");
+            const previewUrl = typeof URL !== "undefined" ? URL.createObjectURL(file) : undefined;
+            const evId = addEvidence(job.id, {
+              type: isVideo ? "video" : "foto",
+              label: isVideo ? "Video" : "Fotoğraf",
+              note: file.name,
+              previewUrl,
+              fileSize: file.size,
+            });
+            setTagTarget(evId);
+            e.target.value = "";
+          }}
+        />
         <div className="mt-2 grid grid-cols-3 gap-2">
           {QUICK_EVIDENCE.map((q) => {
             const Icon = q.icon;
             return (
               <button key={q.type} type="button"
                 onClick={() => {
+                  if (q.type === "foto") {
+                    if (cameraInputRef.current) { cameraInputRef.current.click(); return; }
+                  }
                   const extra = q.type === "ses"
                     ? (() => {
                         const mockLines = [
@@ -1697,6 +1723,7 @@ function EvidenceScreen({ job, goto, addEvidence, removeEvidence, toggleEvidence
           </button>
 
         </div>
+
 
         {tagTarget && job.evidence.some((e) => e.id === tagTarget) ? (
           <div className="mt-2 rounded-2xl px-3 py-2.5" style={{ background: CARD_BG, boxShadow: CARD_SHADOW }}>
